@@ -1,0 +1,425 @@
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 42, 38, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+}
+
+.modal-box {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  width: 640px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.modal-close {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+
+  &:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+}
+
+/* ---------- 录入弹窗 ---------- */
+.form-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px 0;
+  border-bottom: 1px solid var(--line);
+
+  button {
+    border: none;
+    background: none;
+    font-size: 13px;
+    color: var(--ink-2);
+    padding: 8px 14px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+
+    &.active {
+      color: var(--accent-strong);
+      border-bottom-color: var(--accent);
+      font-weight: 500;
+    }
+
+    &.disabled {
+      color: var(--ink-3);
+      cursor: not-allowed;
+    }
+  }
+}
+
+.form-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.form-row-full {
+  grid-column: 1 / -1;
+}
+
+.form-label {
+  font-size: 12px;
+  color: var(--ink-2);
+
+  em {
+    color: var(--danger);
+    font-style: normal;
+  }
+}
+
+.form-placeholder {
+  display: block;
+  text-align: center;
+  color: var(--ink-3);
+  padding: 48px 20px;
+  font-size: 13px;
+}
+
+/* ---------- 扫描 / 导入面板 ---------- */
+.form-body-panel {
+  display: block;
+  padding: 18px 20px;
+  overflow-y: auto;
+}
+
+.scan-bar {
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    color: var(--ink-2);
+    background: var(--surface-2);
+  }
+
+  /* 三个按钮固定宽度，窗口窄时只压缩输入框 */
+  button {
+    flex: none;
+    white-space: nowrap;
+  }
+}
+
+.scan-summary {
+  margin: 14px 0 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.warn-text {
+  color: var(--danger);
+}
+
+// 扫描状态列的报错：单行省略，全文走 title 悬停
+.scan-error {
+  display: block;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.muted-text {
+  color: var(--ink-3);
+}
+
+.scan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.check-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+  }
+
+  th {
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+
+  .row-error td {
+    color: var(--ink-3);
+  }
+}
+
+/* 扫描候选行的小缩略图。类名必须是本页专属：早期误用 .cover-thumb
+   与书架卡片（CoverCard.less）撞名，把书架封面压成了 28×38。 */
+.scan-thumb {
+  width: 28px;
+  height: 38px;
+  object-fit: cover;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.scan-thumb-empty {
+  color: var(--ink-3);
+}
+
+/* ---------- 监控目录 ---------- */
+.watch-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.watch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.watch-empty {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.watch-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 12px;
+  }
+}
+
+.watch-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.watch-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--accent-strong);
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-soft);
+  }
+
+  &.danger {
+    color: var(--danger);
+
+    &:hover {
+      background: var(--danger-soft);
+    }
+  }
+}
+
+/* ---------- 导入映射 ---------- */
+.import-map,
+.import-strategy,
+.import-preview {
+  margin-top: 14px;
+
+  > .form-label {
+    display: block;
+    margin-bottom: 6px;
+  }
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+}
+
+.map-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+
+  span {
+    width: 44px;
+    flex-shrink: 0;
+  }
+
+  select {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+}
+
+.import-strategy {
+  .segmented {
+    margin-bottom: 4px;
+  }
+}
+
+.strategy-hint {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.import-category {
+  margin-top: 14px;
+
+  select {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+}
+
+.import-preview {
+  .scan-table {
+    margin-top: 4px;
+  }
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+
+  button {
+    border: none;
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: 13px;
+    padding: 6px 18px;
+
+    &.active {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-weight: 500;
+    }
+  }
+}
+
+.star-input {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  height: 33px;
+}
+
+.star {
+  border: none;
+  background: none;
+  font-size: 18px;
+  color: #d8d0c0;
+  padding: 0 2px;
+
+  &.star-on {
+    color: var(--want);
+  }
+}
+
+.form-error {
+  margin: 0 20px;
+  padding: 9px 12px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+}

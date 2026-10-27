@@ -1,0 +1,174 @@
+/* 全局设计系统：暖纸质感浅色主题。
+   每页样式放在各自文件夹的 .less 中，这里只放变量与基础元素。 */
+:root {
+  --bg: #f6f4ef;
+  --surface: #fffdf9;
+  --surface-2: #f1ede4;
+  --ink: #2c2a26;
+  --ink-2: #6f6a60;
+  --ink-3: #a39c8f;
+  --line: #e4ddd0;
+  --accent: #8a6a48;
+  --accent-strong: #75573a;
+  --accent-soft: #f0e7d8;
+  --danger: #b3543f;
+  --danger-soft: #f6e4e0;
+  --unread: #8d867a;
+  --want: #b08d57;
+  --reading: #3e7c59;
+  --read: #5b7fa6;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(60, 50, 35, 0.06), 0 6px 18px rgba(60, 50, 35, 0.07);
+  --font: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+
+  &:focus {
+    border-color: var(--accent);
+  }
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 14px;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+  }
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+
+  &:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: #fff;
+  }
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+
+  &:hover {
+    background: #9a4633;
+    border-color: #9a4633;
+    color: #fff;
+  }
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 2px 4px;
+
+  &:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
+  }
+}
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d8d0c0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c4baa6;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 通用状态 ---------- */
+.page-loading,
+.page-error {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.page-error {
+  color: var(--danger);
+}
+
+/* ---------- 徽标 ---------- */
+.badge {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}

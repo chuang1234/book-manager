@@ -1,0 +1,36 @@
+.confirm-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 42, 38, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.confirm-box {
+  width: 380px;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 20px 22px 16px;
+}
+
+.confirm-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.confirm-message {
+  color: var(--ink-2);
+  line-height: 1.7;
+  margin-bottom: 18px;
+  white-space: pre-line;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

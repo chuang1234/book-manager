@@ -1,0 +1,540 @@
+/* 阅读器：全屏、独立的排版体系。
+   主题用局部 CSS 变量覆盖，不去动全局 --ink/--bg，
+   否则退出阅读器时会影响别的页面。 */
+.reader {
+  --r-bg: #fbf8f2;
+  --r-ink: #2c2a26;
+  --r-ink-2: #7d766a;
+  --r-ink-3: #a9a294;
+  --r-line: rgba(60, 50, 35, 0.1);
+  --r-surface: rgba(255, 253, 249, 0.9);
+  --r-hover: rgba(60, 50, 35, 0.06);
+  --r-accent: #8a6a48;
+
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--r-bg);
+  color: var(--r-ink);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.reader-theme-sepia {
+  --r-bg: #f1e6d1;
+  --r-ink: #43392b;
+  --r-ink-2: #7c6f5b;
+  --r-ink-3: #a2957f;
+  --r-line: rgba(67, 57, 43, 0.12);
+  --r-surface: rgba(247, 238, 223, 0.92);
+  --r-hover: rgba(67, 57, 43, 0.07);
+  --r-accent: #8a6a48;
+}
+
+.reader-theme-night {
+  --r-bg: #1b1a18;
+  --r-ink: #c6c0b4;
+  --r-ink-2: #8b857a;
+  --r-ink-3: #6b655c;
+  --r-line: rgba(255, 255, 255, 0.1);
+  --r-surface: rgba(32, 31, 28, 0.92);
+  --r-hover: rgba(255, 255, 255, 0.07);
+  --r-accent: #b08d57;
+}
+
+.reader-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--r-ink-2);
+  font-size: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+/* 打开失败时把路径类长文案整段显示，别截断成省略号 */
+.reader-center-error p {
+  max-width: 560px;
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+/* ---------- 顶栏 ---------- */
+
+.reader-bar {
+  flex: none;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px;
+  background: var(--r-surface);
+  border-bottom: 1px solid var(--r-line);
+  backdrop-filter: blur(12px);
+  z-index: 3;
+}
+
+.reader-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reader-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.reader-icon-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--r-ink-2);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: var(--r-hover);
+    color: var(--r-ink);
+  }
+}
+
+.reader-book {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.reader-book-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--r-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 42vw;
+}
+
+.reader-book-sub {
+  font-size: 11px;
+  color: var(--r-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 42vw;
+}
+
+.reader-btn {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--r-ink-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: var(--r-hover);
+    color: var(--r-ink);
+  }
+
+  &.reader-btn-on {
+    background: var(--r-hover);
+    border-color: var(--r-line);
+    color: var(--r-ink);
+  }
+}
+
+/* ---------- 正文 ---------- */
+
+.reader-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: auto;
+  overscroll-behavior: contain;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--r-line);
+    border-radius: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--r-ink-3);
+  }
+}
+
+.reader-page {
+  margin: 0 auto;
+  padding: 40px 44px 96px;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
+  color: var(--r-ink);
+  letter-spacing: 0.01em;
+}
+
+.reader-p {
+  text-indent: 2em;
+  margin: 0 0 0.85em;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* 虚拟滚动的上下占位块：只负责撑出滚动条长度，本身不可见。
+   千万别给它加 margin / padding，高度必须与 HeightIndex 算出来的完全一致。 */
+.reader-pad {
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 章节标题：识别出的「第 X 章」这类行，去缩进、居中、加留白。
+   字号要比正文大一档，居中排版会显小，同号看着像失焦 */
+.reader-p-title {
+  text-indent: 0;
+  text-align: center;
+  font-size: 1.2em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  margin: 2.2em 0 1.6em;
+  color: var(--r-ink);
+  opacity: 0.92;
+}
+
+/* ---------- 底部进度 ---------- */
+
+.reader-foot {
+  flex: none;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--r-surface);
+  border-top: 1px solid var(--r-line);
+  backdrop-filter: blur(12px);
+}
+
+.reader-progress {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--r-line);
+  overflow: hidden;
+}
+
+.reader-progress-fill {
+  height: 100%;
+  background: var(--r-accent);
+  border-radius: 2px;
+  transition: width 0.18s ease;
+}
+
+.reader-percent {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink-3);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ---------- 显示设置面板 ---------- */
+
+.reader-panel {
+  position: absolute;
+  top: 60px;
+  right: 14px;
+  width: 296px;
+  padding: 14px 14px 8px;
+  background: var(--r-surface);
+  border: 1px solid var(--r-line);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(40, 32, 22, 0.14);
+  backdrop-filter: blur(14px);
+  z-index: 6;
+}
+
+.reader-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.reader-panel-label {
+  font-size: 12px;
+  color: var(--r-ink-2);
+}
+
+.reader-seg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  button {
+    min-width: 34px;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 12px;
+    color: var(--r-ink-2);
+    background: transparent;
+    border: 1px solid var(--r-line);
+    border-radius: 7px;
+    transition: background 0.15s ease, color 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: var(--r-hover);
+      color: var(--r-ink);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    &.on {
+      background: var(--r-accent);
+      border-color: var(--r-accent);
+      color: #fff;
+    }
+  }
+}
+
+.reader-seg-value {
+  min-width: 26px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink);
+}
+
+/* ---------- 目录抽屉 ---------- */
+
+.reader-toc {
+  position: absolute;
+  top: 54px;
+  right: 0;
+  bottom: 26px;
+  width: 330px;
+  display: flex;
+  flex-direction: column;
+  background: var(--r-surface);
+  border-left: 1px solid var(--r-line);
+  box-shadow: -8px 0 24px rgba(40, 32, 22, 0.08);
+  backdrop-filter: blur(14px);
+  z-index: 5;
+}
+
+.reader-toc-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 10px 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--r-ink-2);
+  border-bottom: 1px solid var(--r-line);
+}
+
+.reader-toc-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  padding: 6px 0 20px;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--r-line);
+    border-radius: 4px;
+  }
+}
+
+.reader-toc-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-ink-2);
+  background: transparent;
+  border: none;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: var(--r-hover);
+    color: var(--r-ink);
+  }
+
+  &.on {
+    color: var(--r-accent);
+    font-weight: 600;
+    background: var(--r-hover);
+  }
+}
+
+.reader-toc-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PDF 目录右侧标页码，方便判断跳过去是哪儿 */
+.reader-toc-page {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink-3);
+}
+
+/* ---------- PDF ---------- */
+
+.reader-pdf .reader-center {
+  min-height: 260px;
+}
+
+/* 版心：宽度由页面尺寸 × 缩放决定，这里只管居中和上下留白 */
+.reader-pdf-stage {
+  position: relative;
+  margin: 0 auto;
+  padding: 24px 0 56px;
+}
+
+/* 一页一张纸：白底 + 轻微投影，页间距必须与 PdfView 的 PAGE_GAP 一致 */
+.pdf-page {
+  position: relative;
+  margin: 0 auto 16px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(30, 24, 16, 0.14), 0 8px 22px rgba(30, 24, 16, 0.07);
+  overflow: hidden;
+}
+
+.pdf-canvas {
+  display: block;
+}
+
+/* 文本层：文字本身透明，只用来选中 / 复制 / Ctrl+F 查找；
+   定位全部由 pdfjs 写在内联样式上，这里不要动 position/transform 之外的东西 */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+
+  span,
+  br {
+    position: absolute;
+    color: transparent;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+
+  ::selection {
+    background: rgba(138, 106, 72, 0.3);
+  }
+}
+
+/* 夜间模式下 PDF 是白纸，直接看太刺眼；不反色（反色对图文书很难看），
+   只压一点亮度，让白纸退到纸白的观感 */
+.reader-theme-night .pdf-page {
+  filter: brightness(0.84) contrast(1.02);
+}
+
+/* ---------- EPUB ---------- */
+
+/* 版心宽度由 JS 的 maxWidth 控制，左右内边距与 TXT 的 .reader-page 对齐，
+   这样同一本书在 TXT / EPUB 里换行位置基本一致 */
+.reader-epub-page {
+  margin: 0 auto;
+  padding: 32px 44px 88px;
+}
+
+/* 一节一个槽位，纵向首尾相接排成连续文档；
+   节与节的间隔靠 iframe 里 body 的 padding-bottom（见 EpubView 的 BASE_CSS），
+   这里**不要**加 margin——高度补偿只认 iframe 的内容高度，外加的 margin 会算漏 */
+.reader-epub-sec {
+  position: relative;
+}
+
+/* iframe 高度由 JS 按内容 scrollHeight 设定（见 EpubView 的 measure）：
+   它不自己滚，滚动的永远是外层 .reader-scroll。
+   注意不能给 min-height：内容高度小于它时 style.height 会被压回去，
+   而 JS 记的高度是真实内容高度，两边一错，往上补载时文字就会跳 */
+.reader-epub-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color-scheme: normal;
+}
+
+/* ---------- 页码跳转 ---------- */
+
+.reader-pageno {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink-3);
+  white-space: nowrap;
+}
+
+.reader-page-input {
+  width: 44px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--r-ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    border-color: var(--r-line);
+  }
+
+  &:focus {
+    border-color: var(--r-accent);
+    background: var(--r-bg);
+  }
+}

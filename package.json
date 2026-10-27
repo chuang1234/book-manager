@@ -1,0 +1,43 @@
+{
+  "name": "book-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "个人本地图书管理系统 - 纯离线单用户桌面端",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc -b",
+    "preview": "electron-vite preview",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "smoke": "esbuild scripts/smoke-db.ts --bundle --platform=node --format=cjs --alias:electron=./scripts/electron-stub.js --external:better-sqlite3 --external:canvas --external:pdfjs-dist --outfile=node_modules/.tmp/smoke-db.cjs && node node_modules/.tmp/smoke-db.cjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "chokidar": "^4.0.1",
+    "pdfjs-dist": "3.11.174",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "xlsx": "0.18.5",
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.1",
+    "@rollup/rollup-win32-x64-msvc": "4.64.5",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "22",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/yauzl": "^3.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^44.7.0",
+    "electron-vite": "^5.0.0",
+    "less": "^4.4.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.1"
+  }
+}

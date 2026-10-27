@@ -1,0 +1,128 @@
+.book-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: auto;
+}
+
+.book-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  th {
+    font-size: 12px;
+    color: var(--ink-2);
+    font-weight: 500;
+    background: var(--surface-2);
+  }
+
+  th.sortable {
+    cursor: pointer;
+
+    &:hover {
+      color: var(--accent-strong);
+    }
+  }
+
+  .sort-arrow {
+    color: var(--accent);
+  }
+
+  tbody tr {
+    cursor: pointer;
+
+    &:hover {
+      background: var(--accent-soft);
+    }
+
+    &:last-child td {
+      border-bottom: none;
+    }
+  }
+
+  .cell-title {
+    font-weight: 500;
+    color: var(--ink);
+    max-width: 260px;
+  }
+
+  /* 书名 + 格式小标同一行；书名负责省略，小标不参与压缩 */
+  .cell-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .cell-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  td {
+    color: var(--ink-2);
+  }
+}
+
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
+.cell-tags {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.table-tag {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 11px;
+  border-radius: 10px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* 书名后的格式小标，本身就是「打开」按钮 */
+.file-chip {
+  display: inline-block;
+  flex: none;
+  font-size: 10px;
+  line-height: 1.7;
+  padding: 0 7px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+}
+
+/* 能在应用内读的格式（TXT）直接染成强调色，暗示点开是「阅读」而不是甩给外部程序 */
+.file-chip.file-chip-read {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}

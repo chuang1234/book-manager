@@ -1,0 +1,169 @@
+.page-lists {
+  display: flex;
+  gap: 24px;
+  height: 100%;
+  align-items: stretch;
+}
+
+.lists-side {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--line);
+  padding-right: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.lists-side-head {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.lists-new {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.lists-new .checkin-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.lists-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.lists-empty {
+  font-size: 12px;
+  color: var(--ink-3);
+  padding: 8px 4px;
+}
+
+.lists-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+.lists-item-active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.lists-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lists-item-count {
+  font-size: 11px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.lists-item-active .lists-item-count {
+  color: var(--accent-strong);
+}
+
+.lists-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.lists-main-empty {
+  color: var(--ink-3);
+  font-size: 13px;
+  padding-top: 40px;
+  text-align: center;
+}
+
+.lists-main-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.lists-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.lists-title-count {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.lists-title-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+
+.lists-rename {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+  max-width: 420px;
+}
+
+.lists-rename .checkin-input {
+  flex: 1;
+}
+
+.lists-books-empty {
+  color: var(--ink-3);
+  font-size: 13px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.lists-books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 18px;
+}
+
+.lists-book-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lists-book-remove {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  padding: 2px;
+
+  &:hover {
+    color: var(--danger);
+  }
+}
