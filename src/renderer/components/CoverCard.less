@@ -110,6 +110,50 @@
   font-size: 26px;
 }
 
+/* ---------- 选择模式 ---------- */
+/* 选择态不上浮：hover 抬起来会让人以为「点了要跳走」，而这时候点一下只是勾选 */
+.cover-card.cover-card-selectable:hover .cover-thumb {
+  transform: none;
+}
+
+.cover-card.cover-card-selectable .cover-open {
+  display: none;
+}
+
+.cover-card.is-selected .cover-thumb {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    var(--shadow);
+}
+
+/* 勾选圈压在封面左上、让开 5px 书脊。未选中是半透明白底 + 深描边——
+   封面底色是深是浅无法预知，白底和描边各管一半场景 */
+.cover-check {
+  position: absolute;
+  top: 7px;
+  left: 9px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(0, 0, 0, 0.38);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+  color: transparent;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+
+  &.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+}
+
 .cover-card .cover-meta {
   display: flex;
   flex-direction: column;

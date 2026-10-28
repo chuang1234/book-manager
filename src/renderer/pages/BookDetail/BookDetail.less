@@ -97,10 +97,66 @@
   transition: width 0.2s;
 }
 
-.detail-rating {
-  font-size: 15px;
-  color: var(--want);
-  letter-spacing: 2px;
+/* ---------- 星级评分（从编辑表单移出来的交互） ---------- */
+.rating-stars {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rating-stars-label {
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0;
+  min-width: 52px;
+}
+
+.rating-stars-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rating-stars .star {
+  border: none;
+  background: none;
+  font-size: 19px;
+  line-height: 1;
+  /* 未点亮的星：写死的浅米色在深色主题下会白得跟已点亮一样，必须走变量 */
+  color: var(--ink-3);
+  padding: 0 1px;
+  cursor: pointer;
+  transition: transform 0.12s, color 0.12s;
+
+  &.star-on {
+    color: var(--want);
+  }
+
+  &:hover {
+    transform: scale(1.15);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.rating-stars-busy {
+  opacity: 0.6;
+}
+
+.rating-stars-clear {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+
+  &:hover {
+    color: var(--danger);
+  }
 }
 
 /* ---------- 右：信息列 ---------- */
@@ -712,6 +768,12 @@
   border-bottom: 1px solid var(--line);
   font-size: 13px;
   cursor: pointer;
+
+  /* 勾中的行给一点底色，一眼看出哪些已经加进去了 */
+  &.list-check-on {
+    background: var(--surface-2);
+    border-radius: 6px;
+  }
 }
 
 .list-check-name {
@@ -729,6 +791,18 @@
   gap: 8px;
   margin-top: 12px;
   align-items: center;
+
+  /* checkin-input 全局是 width:100%，在 flex 行里会把按钮挤成竖排 */
+  .checkin-input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 }
 
 .add-to-list-new {
@@ -742,3 +816,293 @@
   justify-content: flex-end;
 }
 
+/* ---------- 阅读时长 ---------- */
+
+.read-time {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.read-time-total {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.read-time-hint {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* 近 7 天：柱高按当周最大值归一，只有形状、不标刻度——这里问的是「最近有没有在读」 */
+.read-time-chart {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.read-time-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 30px;
+}
+
+.read-time-caption {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.read-time-day {
+  width: 9px;
+  height: 30px;
+  display: flex;
+  align-items: flex-end;
+  background: var(--line);
+  border-radius: 3px;
+
+  i {
+    display: block;
+    width: 100%;
+    background: var(--ink-3);
+    border-radius: 3px;
+  }
+
+  &.is-on i {
+    background: var(--accent);
+  }
+}
+
+
+/* ---------- 摘录与批注（阅读器划线在详情页的展示） ---------- */
+.detail-anno-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.detail-anno-item {
+  display: flex;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+/* 色条与阅读器里的划线同色，一眼对得上是哪条 */
+.detail-anno-bar {
+  flex-shrink: 0;
+  width: 4px;
+  border-radius: 2px;
+
+  &.detail-anno-bar-amber {
+    background: rgba(232, 178, 74, 0.75);
+  }
+
+  &.detail-anno-bar-sage {
+    background: rgba(126, 176, 132, 0.75);
+  }
+
+  &.detail-anno-bar-sky {
+    background: rgba(122, 162, 212, 0.75);
+  }
+}
+
+.detail-anno-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-anno-text {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.detail-anno-note {
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.detail-anno-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* 头部两个按钮（导出为笔记 / 做成卡片）并排，别让它们各自占满一行 */
+.detail-anno-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-anno-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* ---------- 右栏（只在宽屏出现） ---------- */
+
+/* 默认不显示：1280 的窗口里内容区只有 1004，980 的版心几乎铺满，
+   硬塞第三栏会把正文挤成一条。窄窗口维持原来的两栏。 */
+.detail-rail {
+  display: none;
+}
+
+.rail-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 12px 10px;
+}
+
+.rail-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.rail-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+
+  button {
+    padding: 5px 8px;
+    text-align: left;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+
+    &:hover {
+      background: var(--surface-2);
+      color: var(--ink);
+    }
+
+    &.on {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-weight: 600;
+    }
+  }
+}
+
+.rail-books {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rail-book {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+.rail-book-cover {
+  display: block;
+  width: 34px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 3px 5px 5px 3px;
+  object-fit: cover;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+/* 没封面的书用首字 + 渐变兜底，和书架卡片一个路子，不至于裂成一块白 */
+.rail-book-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.rail-book-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rail-book-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.rail-book-author {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* 视口够宽才换三栏：封面固定、正文吃掉剩余、右栏固定 260。
+   断点 1480 不是随手取的：再窄一点，正文列就掉到 650 以下（现在 708），
+   加一栏反而把正文挤窄，等于用一个问题换另一个问题。
+   minmax(0, 1fr) 不能写成 1fr——长书名/长文件名的 nowrap 会把列撑破。 */
+@media (min-width: 1480px) {
+  .page-detail {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr) 260px;
+    align-items: start;
+    gap: 28px;
+    max-width: 1400px;
+    margin-inline: auto;
+  }
+
+  .detail-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: sticky;
+    /* 详情页很长，滚到「摘录」时还能一眼跳回「简介」 */
+    top: 8px;
+    align-self: start;
+  }
+}

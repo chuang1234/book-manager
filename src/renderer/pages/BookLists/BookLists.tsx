@@ -5,6 +5,7 @@ import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import type { View } from '../../App'
 import type { BookListItem, BookList as BookListType } from '../../../shared/types'
+import AddBooksModal from './AddBooksModal'
 import './BookLists.less'
 
 interface Props {
@@ -22,6 +23,7 @@ export default function BookLists({ dataVersion, onNavigate }: Props) {
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [busy, setBusy] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
 
   const loadLists = () => {
     api.list
@@ -53,6 +55,17 @@ export default function BookLists({ dataVersion, onNavigate }: Props) {
   }, [selectedId, dataVersion])
 
   const selected = lists.find((l) => l.id === selectedId) || null
+
+  /** 弹窗里加减书后：计数与右侧书架都要跟上 */
+  const refreshAfterAdd = () => {
+    loadLists()
+    if (selectedId != null) {
+      api.list
+        .books(selectedId)
+        .then(setBooks)
+        .catch(() => setBooks([]))
+    }
+  }
 
   const create = async () => {
     const name = newName.trim()
@@ -178,6 +191,9 @@ export default function BookLists({ dataVersion, onNavigate }: Props) {
                   <h2 className="lists-title">{selected.name}</h2>
                   <span className="lists-title-count">{selected.book_count} 本</span>
                   <div className="lists-title-actions">
+                    <button className="link-btn" onClick={() => setAddOpen(true)}>
+                      添加图书
+                    </button>
                     <button
                       className="link-btn"
                       onClick={() => {
@@ -197,7 +213,7 @@ export default function BookLists({ dataVersion, onNavigate }: Props) {
 
             {books.length === 0 ? (
               <div className="lists-books-empty">
-                这个书单还是空的。在图书详情页点「加入书单」即可添加。
+                这个书单还是空的。点上方「添加图书」挑几本进来，或在图书详情页点「加入书单」。
               </div>
             ) : (
               <div className="lists-books-grid">
@@ -214,6 +230,15 @@ export default function BookLists({ dataVersion, onNavigate }: Props) {
           </>
         )}
       </section>
+
+      {selected && (
+        <AddBooksModal
+          listId={selected.id}
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onChanged={refreshAfterAdd}
+        />
+      )}
     </div>
   )
 }

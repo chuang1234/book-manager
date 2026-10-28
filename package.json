@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "个人本地图书管理系统 - 纯离线单用户桌面端",
+  "author": "闯哥",
   "license": "MIT",
   "engines": {
     "node": ">=20.19.0"
@@ -13,7 +14,9 @@
     "build": "electron-vite build",
     "typecheck": "tsc -b",
     "preview": "electron-vite preview",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "rebuild": "electron-rebuild -f -o better-sqlite3",
+    "dist": "npm run rebuild && electron-vite build && electron-builder --win",
+    "dist:dir": "npm run rebuild && electron-vite build && electron-builder --win --dir",
     "smoke": "esbuild scripts/smoke-db.ts --bundle --platform=node --format=cjs --alias:electron=./scripts/electron-stub.js --external:better-sqlite3 --external:canvas --external:pdfjs-dist --outfile=node_modules/.tmp/smoke-db.cjs && node node_modules/.tmp/smoke-db.cjs"
   },
   "dependencies": {
@@ -35,6 +38,7 @@
     "@types/yauzl": "^3.2.3",
     "@vitejs/plugin-react": "^5.1.4",
     "electron": "^44.7.0",
+    "electron-builder": "^26.18.0",
     "electron-vite": "^5.0.0",
     "less": "^4.4.0",
     "typescript": "~5.8.3",

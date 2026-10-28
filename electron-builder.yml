@@ -1,0 +1,49 @@
+appId: com.bookmanager.app
+productName: 本地书架
+copyright: Copyright © 2026
+
+directories:
+  output: dist
+  buildResources: resources
+
+# 只打构建产物和清单。根目录那几十张 shot-*.png 截图、探针脚本、identifier.sqlite
+# 都不该进包——默认策略会把整个项目目录塞进 asar，白白多几十 MB。
+files:
+  - "out/**/*"
+  - "package.json"
+  # pdfjs-dist 的 optionalDependency，Node 侧我们靠空类 polyfill 绕开（见 main/pdfjs.ts），
+  # 包里根本不需要它；留着还会让 electron-builder 去编它，一编就卡在缺 cairo.h
+  - "!node_modules/canvas/**"
+
+# 关掉自动 rebuild：它会把 node_modules 里每个原生模块都编一遍，撞上 canvas 直接失败。
+# 真正的原生模块只有 better-sqlite3，由 `npm run dist` 里的 electron-rebuild -w 单独处理。
+npmRebuild: false
+
+# better-sqlite3 是原生模块：.node 二进制在 asar 里没法 dlopen，必须解到
+# app.asar.unpacked 下。漏了这条的表现是启动即报 "Cannot open ... better_sqlite3.node"。
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+
+win:
+  icon: resources/icon.ico
+  executableName: 本地书架
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  # 走安装向导而不是一键装：能选目录，也不用担心装到没权限的地方
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: 本地书架
+  # 卸载默认连书库和备份一起删——那是用户攒了几年的东西，绝对不行
+  deleteAppDataOnUninstall: false
+  artifactName: 本地书架-${version}-安装包.${ext}
+
+portable:
+  artifactName: 本地书架-${version}-免安装.${ext}

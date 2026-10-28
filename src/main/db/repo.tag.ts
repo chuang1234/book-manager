@@ -4,8 +4,13 @@ import type { Tag, TagWithCount } from '../../shared/types'
 const MAX_TAG_NAME = 20
 const MAX_TAGS_PER_BOOK = 20
 
-/** 清洗标签名：去空白、去重、限长；空名直接丢弃 */
-function normalizeNames(names: string[]): string[] {
+/**
+ * 清洗标签名：去空白、去重、限长；空名直接丢弃。
+ *
+ * 单独导出是为了批量操作——批量是「给 N 本各加几个」，不该套用
+ * 「每本最多 20 个」那条规则（那是覆盖式写入的约束，追加场景按现有标签数算）。
+ */
+export function cleanNames(names: string[]): string[] {
   const out: string[] = []
   for (const raw of names) {
     const name = (raw ?? '').trim()
@@ -13,6 +18,12 @@ function normalizeNames(names: string[]): string[] {
     if (name.length > MAX_TAG_NAME) throw new Error(`标签名最长 ${MAX_TAG_NAME} 个字符`)
     if (!out.includes(name)) out.push(name)
   }
+  return out
+}
+
+/** 覆盖式设置用：在清洗之外还卡「每本最多 20 个」 */
+function normalizeNames(names: string[]): string[] {
+  const out = cleanNames(names)
   if (out.length > MAX_TAGS_PER_BOOK) throw new Error(`每本图书最多 ${MAX_TAGS_PER_BOOK} 个标签`)
   return out
 }

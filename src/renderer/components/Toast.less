@@ -15,7 +15,8 @@
   padding: 9px 18px;
   border-radius: 8px;
   background: var(--ink);
-  color: #f6f4ef;
+  /* 反色写法：跟着 --bg 走，深色主题下 --ink 变浅，这里必须变深，否则白字压白底 */
+  color: var(--bg);
   font-size: 13px;
   box-shadow: var(--shadow);
   animation: toast-in 0.18s ease-out;

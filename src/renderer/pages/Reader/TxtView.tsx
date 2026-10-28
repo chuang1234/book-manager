@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useEffect,
   useImperativeHandle,
@@ -18,6 +19,9 @@ import {
   splitParagraphs,
   type ParaGeometry,
 } from '../../../shared/reader'
+import { encodeAnchor, sliceRuns } from '../../../shared/annotation'
+import type { Annotation } from '../../../shared/types'
+import { elementOf, rectOf, txtSpans, type TextPick, type ViewRect } from './anno'
 import type { ReadViewHandle } from './view'
 
 interface Props {
@@ -28,6 +32,17 @@ interface Props {
   maxWidth: number
   /** 首次打开时恢复到的字符偏移 */
   initialOffset: number
+  /** 搜索命中的高亮：字符偏移 + 关键词长度 */
+  mark?: { offset: number; length: number } | null
+  /** 本书的全部划线（TXT 口径的会被画出来，其余忽略） */
+  annos?: Annotation[]
+  /** 正在编辑的那条：加一圈描边，好在一堆黄线里认出它 */
+  activeAnnoId?: number | null
+  /** 用户选完一段文字（null 表示这次点击没有选中，让外层收起气泡） */
+  /** 选区交给 Reader：跨页划线会是多条，其余恒为单条数组 */
+  onPick?: (picks: TextPick[] | null) => void
+  /** 点到了已有的划线 */
+  onAnnoClick?: (id: number, rect: ViewRect) => void
   ctl?: RefObject<ReadViewHandle | null>
   onProgress: (offset: number, percent: number) => void
 }
@@ -51,7 +66,8 @@ const OVERSCAN_PX = 300
  * 跳转位置靠目标段落的真实 rect 校正，不依赖估算累积，避免大文件跳转落偏。
  */
 function TxtView(props: Props) {
-  const { text, fontSize, lineHeight, maxWidth, initialOffset, ctl, onProgress } = props
+  const { text, fontSize, lineHeight, maxWidth, initialOffset, mark, annos, activeAnnoId, onPick, onAnnoClick, ctl, onProgress } =
+    props
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
@@ -230,9 +246,47 @@ function TxtView(props: Props) {
     }
   }
 
+  /**
+   * 把某条划线滚到视口上方。
+   *
+   * jump() 只能把「那一段」顶到视口顶上：段落长的时候划线还在屏幕外，
+   * 从抽屉点过来就看着像没跳对地方。这里按 <mark> 的真实 rect 再校一次。
+   * 目标段落要等下一轮渲染才进 DOM，所以用 rAF 重试；试满就放手，不跟用户抢滚动。
+   */
+  const focusAnno = (id: number) => {
+    let left = 60
+    const step = () => {
+      const c = scrollRef.current
+      const page = pageRef.current
+      if (!c || !page) return
+      const el = page.querySelector<HTMLElement>(`mark.reader-anno[data-anno="${id}"]`)
+      if (!el) {
+        if (--left > 0) requestAnimationFrame(step)
+        return
+      }
+      const cTop = c.getBoundingClientRect().top
+      const elTop = el.getBoundingClientRect().top - cTop + c.scrollTop
+      const max = Math.max(0, c.scrollHeight - c.clientHeight)
+      // 落在视口上方 96px：跟搜索命中同一套落位习惯，既不贴顶栏也留着上下文
+      const want = Math.min(max, Math.max(0, elTop - 96))
+      if (Math.abs(want - c.scrollTop) > 1) {
+        ignoreScroll.current = true
+        c.scrollTop = want
+        requestAnimationFrame(() => {
+          ignoreScroll.current = false
+        })
+      }
+      // 这一跳可能跨了好几屏，窗口与进度都要跟着走
+      syncRange()
+      report()
+    }
+    requestAnimationFrame(step)
+  }
+
   useImperativeHandle(ctl, () => ({
     // 跳转不做平滑滚动：位置本来就靠 rect 校正，叠动画反而会看着"飘"
     goTo: (offset: number) => jump(offset),
+    scrollToAnno: (id: number) => focusAnno(id),
     scrollPage: (dir: 1 | -1) => {
       const c = scrollRef.current
       if (!c) return
@@ -383,20 +437,119 @@ function TxtView(props: Props) {
 
   /* ---------------- 输出 ---------------- */
 
+  /** 本书的 TXT 口径划线（绝对字符偏移，与段落 offset 同一坐标系） */
+  const annoSpans = useMemo(() => txtSpans(annos ?? []), [annos])
+
   const rendered = useMemo(() => {
     const out: ReactNode[] = new Array(range.end - range.start)
+    // 搜索命中当成一条「优先级更高的临时区间」混进去：同一套切片逻辑，
+    // 不用为「划线上面又要盖搜索高亮」写第二份拆段代码
+    const spans = annoSpans.slice()
+    if (mark && mark.length > 0) {
+      spans.push({ id: -1, start: mark.offset, end: mark.offset + mark.length, color: 'hit', priority: 9 })
+    }
     for (let i = range.start; i < range.end; i++) {
+      const p = paragraphs[i]
+      let body: ReactNode = p.text
+      if (spans.length > 0 && p.text.length > 0) {
+        const runs = sliceRuns(p.offset, p.text.length, spans)
+        // 绝大多数段落一条划线都没有，走这条快速路径，不多建节点
+        const plain = runs.length === 1 && runs[0].ids.length === 0 && runs[0].color === ''
+        if (!plain) {
+          body = runs.map((r, k) => {
+            const piece = p.text.slice(r.from - p.offset, r.to - p.offset)
+            if (r.color === 'hit') {
+              return (
+                <mark key={k} className="reader-hit">
+                  {piece}
+                </mark>
+              )
+            }
+            if (r.ids.length === 0) return <Fragment key={k}>{piece}</Fragment>
+            const top = r.ids[r.ids.length - 1]
+            return (
+              <mark
+                key={k}
+                className={`reader-anno reader-anno-${r.color}${activeAnnoId === top ? ' on' : ''}`}
+                data-anno={top}
+              >
+                {piece}
+              </mark>
+            )
+          })
+        }
+      }
       out[i - range.start] = (
-        <p key={i} className={titleFlags[i] ? 'reader-p reader-p-title' : 'reader-p'}>
-          {paragraphs[i].text}
+        <p key={i} data-i={i} className={titleFlags[i] ? 'reader-p reader-p-title' : 'reader-p'}>
+          {body}
         </p>
       )
     }
     return out
-  }, [range, paragraphs, titleFlags])
+  }, [range, paragraphs, titleFlags, mark, annoSpans, activeAnnoId])
+
+  /* ---------------- 选区 → 锚点 ---------------- */
+
+  /** 选区端点落在哪一段（段落带 data-i，直接读，不靠 DOM 顺序去数） */
+  const paraOf = (node: Node | null): HTMLElement | null =>
+    (elementOf(node)?.closest('.reader-p') as HTMLElement | null) ?? null
+
+  /**
+   * 选区端点在段落内的字符偏移。
+   * 用「从段落开头到端点的 Range」取 toString().length，而不是读 startOffset——
+   * 段落里插了 <mark> 之后 startOffset 是相对文本节点的，跟段落坐标对不上。
+   */
+  const intra = (pEl: HTMLElement, node: Node, offset: number): number => {
+    const r = document.createRange()
+    r.selectNodeContents(pEl)
+    try {
+      r.setEnd(node, offset)
+    } catch {
+      return 0
+    }
+    return r.toString().length
+  }
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    if (!onPick) return
+    const hit = (e.target as HTMLElement).closest('mark.reader-anno') as HTMLElement | null
+    if (hit) {
+      const id = Number(hit.dataset.anno)
+      const r = hit.getBoundingClientRect()
+      if (Number.isFinite(id)) onAnnoClick?.(id, { x: r.left, y: r.top, w: r.width, h: r.height })
+      return
+    }
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      onPick(null)
+      return
+    }
+    const range = sel.getRangeAt(0)
+    const sp = paraOf(range.startContainer)
+    const ep = paraOf(range.endContainer)
+    if (!sp || !ep) {
+      onPick(null)
+      return
+    }
+    const si = Number(sp.dataset.i)
+    const ei = Number(ep.dataset.i)
+    const sP = paragraphs[si]
+    const eP = paragraphs[ei]
+    if (!sP || !eP) {
+      onPick(null)
+      return
+    }
+    const start = sP.offset + intra(sp, range.startContainer, range.startOffset)
+    const end = eP.offset + intra(ep, range.endContainer, range.endOffset)
+    if (end <= start) {
+      onPick(null)
+      return
+    }
+    onPick([{ anchor: encodeAnchor({ k: 'txt', start, end }), text: text.slice(start, end), rect: rectOf(range) }])
+  }
 
   return (
-    <div className="reader-scroll" ref={scrollRef} onScroll={onScroll}>
+    <div className="reader-scroll" ref={scrollRef} onScroll={onScroll} onMouseUp={onMouseUp}>
       <div className="reader-page" ref={pageRef} style={{ fontSize, lineHeight, maxWidth }}>
         <div className="reader-pad" ref={topPadRef} style={{ height: `${index.offsetOf(range.start)}px` }} />
         {rendered}

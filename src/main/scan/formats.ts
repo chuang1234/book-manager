@@ -2,7 +2,7 @@ import path from 'node:path'
 import type { EbookFormat } from '../../shared/types'
 
 /** 支持的电子书扩展名（顺序即扫描优先级展示顺序） */
-export const EBOOK_EXTS: EbookFormat[] = ['pdf', 'epub', 'mobi', 'txt']
+export const EBOOK_EXTS: EbookFormat[] = ['pdf', 'epub', 'mobi', 'azw3', 'txt']
 
 /** 封面体积上限：超过则丢弃（个别 PDF 内嵌整张海报级大图，没必要入库） */
 export const COVER_MAX_BYTES = 4 * 1024 * 1024
@@ -55,6 +55,8 @@ export function decodeXmlEntities(s: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
+    // 不换行空格是正文里最常见的命名实体（排版用的缩进与间隔），不解码会原样显示成 &nbsp;
+    .replace(/&nbsp;/g, '\u00a0')
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&amp;/g, '&')
@@ -63,16 +65,22 @@ export function decodeXmlEntities(s: string): string {
 /** calibre 转换时若源文件没标题，书名会写成 "calibre (6.3.0) [https://calibre-ebook.com]" */
 const CALIBRE_TITLE = /^calibre\s*\(\s*[\d.]+\s*\)\s*(\[\s*https?:\/\/calibre-ebook\.com\s*\])?$/i
 
+/** 下载站 PDF 元数据里常见的无信息量标题（Z-Library 尤爱把 Title 写成 "a"） */
+const PLACEHOLDER_TITLE = /^(untitled|unknown|document|doc|newbook|书名)$/i
+
 /**
  * 书名是否是「无信息量」的占位值：
- * 空 / calibre 占位符 / 纯数字 ID（≥6 位，如 14566773 这种书库编号，别拿它当书名）。
- * 注意 6 位以上才判，避免把《1984》这种真书名误杀。
+ * 空 / calibre 占位符 / 纯数字 ID（≥6 位，如 14566773 这种书库编号）/ 单个拉丁字母（"a"）。
+ * 注意数字 6 位以上才判，避免把《1984》这种真书名误杀；单字中文不拦（《骚》是真书名），
+ * 只拦单个拉丁字母——真实书名没有叫 "a" 的，而下载站元数据全是这种垃圾。
  */
 export function isJunkTitle(s: string): boolean {
   const t = (s ?? '').trim()
   if (!t) return true
   if (CALIBRE_TITLE.test(t)) return true
-  return /^\d{6,}$/.test(t)
+  if (PLACEHOLDER_TITLE.test(t)) return true
+  if (/^\d{6,}$/.test(t)) return true
+  return /^[a-zA-Z]$/.test(t)
 }
 
 /** 下载站命名里的噪声分组（Z-Library / Library Genesis 等） */

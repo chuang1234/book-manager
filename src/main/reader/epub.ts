@@ -410,14 +410,24 @@ function rewriteUrlAttrs(html: string, baseDir: string, urls: Map<string, string
   )
 }
 
+/**
+ * 1×1 全透明 GIF。包内找不到的资源（书里常引用已被删掉的装饰图）用它顶替：
+ * 留着原样的话，srcdoc 会按应用自己的地址去请求，控制台一片 404，还等于偷偷发了网络请求。
+ */
+const TRANSPARENT_GIF =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 /** CSS 里的 url() 换成 data URL；@import 直接删掉（srcdoc 里没有 base，外链必失败） */
 function rewriteCss(css: string, baseDir: string, urls: Map<string, string>): string {
   return css
     .replace(/@import\b[^;]*;?/gi, '')
     .replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (all, _q: string, raw: string) => {
-      const p = resolveZipPath(baseDir, raw.trim())
+      const href = raw.trim()
+      // 已内联的数据、SVG 内部的渐变引用（url(#grad)）、blob 一律不动
+      if (/^(?:data:|#|blob:)/i.test(href)) return all
+      const p = resolveZipPath(baseDir, href)
       const data = p ? urls.get(p) : ''
-      return data ? `url("${data}")` : all
+      return data ? `url("${data}")` : `url("${TRANSPARENT_GIF}")`
     })
 }
 
@@ -502,4 +512,43 @@ export async function readEpubSection(filePath: string, index: number): Promise<
     .join('\n')
 
   return { index, title: firstHeading(html, target), html, css }
+}
+
+/* ------------------------------------------------------------------ *
+ * 全文纯文本（搜索用）
+ * ------------------------------------------------------------------ */
+
+/**
+ * HTML → 纯文本。
+ * 块级标签先换成换行再剥标签：一律换空格会把整章挤成一行，
+ * 搜索结果的摘要就会截出一段夹在中间的怪句子。
+ */
+export function htmlToPlainText(html: string): string {
+  const body = bodyInner(html).replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')
+  return decodeXmlEntities(
+    body
+      .replace(
+        /<(?:br|hr|p|div|h[1-6]|li|tr|dt|dd|section|article|blockquote|pre|figcaption)\b[^>]*>/gi,
+        '\n',
+      )
+      .replace(/<[^>]*>/g, ' '),
+  )
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim()
+}
+
+/**
+ * 全书各节的纯文本（顺序与 spine 一致）。
+ *
+ * 与 readEpubSection 的差别是**不内联任何资源**：搜索要的是字，
+ * 不是把几十张插图 base64 进内存——图文书的整本过一遍能吃掉几百 MB。
+ * 一次 zip 遍历读完全部小节。
+ */
+export async function extractEpubTexts(filePath: string): Promise<string[]> {
+  const opf = await readOpf(filePath)
+  if (opf.spine.length === 0) return []
+  const spine = opf.spine.slice(0, MAX_SECTIONS)
+  const files = await readZipEntries(filePath, spine)
+  return spine.map((p) => htmlToPlainText(files.get(p)?.toString('utf8') ?? ''))
 }

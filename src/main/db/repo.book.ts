@@ -138,22 +138,50 @@ export function update(input: BookInput & { id: number }): Book {
     .run({ ...input, title: input.title.trim() })
   if (result.changes === 0) throw new Error('图书不存在')
 
-  // 阅读状态跃迁 → 写阅读时间线，并补开始 / 读完时间（仅当原本为空，避免覆盖手动值）
-  if (old.read_status !== input.read_status) {
-    if (input.read_status === 'reading' && old.read_status !== 'reading') {
-      logEvent(input.id, 'start')
-      if (!old.start_read_at) {
-        db.prepare("UPDATE book SET start_read_at = datetime('now', 'localtime') WHERE id = ? AND (start_read_at = '' OR start_read_at IS NULL)").run(input.id)
-      }
-    }
-    if (input.read_status === 'read' && old.read_status !== 'read') {
-      logEvent(input.id, 'finish')
-      if (!old.finish_read_at) {
-        db.prepare("UPDATE book SET finish_read_at = datetime('now', 'localtime') WHERE id = ? AND (finish_read_at = '' OR finish_read_at IS NULL)").run(input.id)
-      }
-    }
-  }
+  applyStatusChange(input.id, old.read_status, input.read_status)
   return getOne(input.id)!
+}
+
+/**
+ * 阅读状态跃迁的副作用：写阅读时间线，并补开始 / 读完时间。
+ *
+ * 单本编辑和书架批量改状态共用这一份——两边各写一遍迟早分叉
+ * （批量那边漏掉 `start_read_at` 的话，时间线上有「开始」但详情页没有开始日期）。
+ * 时间戳只在原本为空时补，不动用户手填的值。
+ */
+export function applyStatusChange(bookId: number, from: ReadStatus, to: ReadStatus): void {
+  if (from === to) return
+  const db = getDb()
+  if (to === 'reading' && from !== 'reading') {
+    logEvent(bookId, 'start')
+    db.prepare(
+      "UPDATE book SET start_read_at = datetime('now', 'localtime') WHERE id = ? AND (start_read_at = '' OR start_read_at IS NULL)",
+    ).run(bookId)
+  }
+  if (to === 'read' && from !== 'read') {
+    logEvent(bookId, 'finish')
+    db.prepare(
+      "UPDATE book SET finish_read_at = datetime('now', 'localtime') WHERE id = ? AND (finish_read_at = '' OR finish_read_at IS NULL)",
+    ).run(bookId)
+  }
+}
+
+/** 只改阅读状态（批量用）：走和单本编辑同一套跃迁副作用 */
+export function setReadStatus(id: number, status: ReadStatus): void {
+  getDb().prepare('UPDATE book SET read_status = ? WHERE id = ? AND is_deleted = 0').run(status, id)
+}
+
+/**
+ * 只改评分：详情页的星级交互用。不走 update（那需要整份 BookInput，
+ * 顺手评分不该带着整张表单跑，也不能动其它字段）。
+ */
+export function setRating(id: number, rating: number): Book {
+  if (!Number.isInteger(rating) || rating < 0 || rating > 5) throw new Error('评分必须是 0-5 的整数')
+  const result = getDb()
+    .prepare('UPDATE book SET rating = ? WHERE id = ? AND is_deleted = 0')
+    .run(rating, id)
+  if (result.changes === 0) throw new Error('图书不存在')
+  return getOne(id)!
 }
 
 /** 软删除：移入回收站 */
@@ -206,10 +234,12 @@ export function setEbookPath(id: number, filePath: string): Book {
   return getOne(id)!
 }
 
-/** 扫描去重：按电子书文件路径查已入库图书（含回收站，软删除过也算入过库） */
+/** 扫描去重：按电子书文件路径查「在架」图书。回收站里的不算——删进回收站后要能重新导入同一文件。 */
 export function findByEbookPath(filePath: string): Book | null {
   return (
-    (getDb().prepare('SELECT * FROM book WHERE ebook_path = ? LIMIT 1').get(filePath) as Book | undefined) ?? null
+    (getDb().prepare('SELECT * FROM book WHERE ebook_path = ? AND is_deleted = 0 LIMIT 1').get(filePath) as
+      | Book
+      | undefined) ?? null
   )
 }
 

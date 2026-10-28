@@ -7,7 +7,15 @@
   --r-ink-2: #7d766a;
   --r-ink-3: #a9a294;
   --r-line: rgba(60, 50, 35, 0.1);
+  --r-border: rgba(60, 50, 35, 0.22);
   --r-surface: rgba(255, 253, 249, 0.9);
+  --r-btn-bg: rgba(255, 255, 255, 0.72);
+  --r-btn-bg-hover: #fff;
+  /* 返回按钮单独一套：它比面板开关更「重」一档，出口要在一堆按钮里先被看见 */
+  --r-back-bg: #fffdf8;
+  --r-back-bg-hover: #fff;
+  --r-back-shadow: 0 1px 2px rgba(40, 32, 22, 0.07), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  --r-back-icon-ink: #fff;
   --r-hover: rgba(60, 50, 35, 0.06);
   --r-accent: #8a6a48;
 
@@ -26,7 +34,14 @@
   --r-ink-2: #7c6f5b;
   --r-ink-3: #a2957f;
   --r-line: rgba(67, 57, 43, 0.12);
+  --r-border: rgba(67, 57, 43, 0.24);
   --r-surface: rgba(247, 238, 223, 0.92);
+  --r-btn-bg: rgba(255, 255, 255, 0.5);
+  --r-btn-bg-hover: rgba(255, 255, 255, 0.85);
+  --r-back-bg: #fffaf0;
+  --r-back-bg-hover: #fff;
+  --r-back-shadow: 0 1px 2px rgba(67, 57, 43, 0.08), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  --r-back-icon-ink: #fff;
   --r-hover: rgba(67, 57, 43, 0.07);
   --r-accent: #8a6a48;
 }
@@ -37,7 +52,15 @@
   --r-ink-2: #8b857a;
   --r-ink-3: #6b655c;
   --r-line: rgba(255, 255, 255, 0.1);
+  --r-border: rgba(255, 255, 255, 0.2);
   --r-surface: rgba(32, 31, 28, 0.92);
+  --r-btn-bg: rgba(255, 255, 255, 0.06);
+  --r-btn-bg-hover: rgba(255, 255, 255, 0.13);
+  --r-back-bg: rgba(255, 255, 255, 0.1);
+  --r-back-bg-hover: rgba(255, 255, 255, 0.16);
+  --r-back-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.07) inset;
+  /* 深色主题的强调色是暗金，白箭头压上去只有 3:1，改用近黑更清楚 */
+  --r-back-icon-ink: #201c15;
   --r-hover: rgba(255, 255, 255, 0.07);
   --r-accent: #b08d57;
 }
@@ -66,12 +89,12 @@
 
 .reader-bar {
   flex: none;
-  height: 54px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 14px;
+  padding: 0 16px;
   background: var(--r-surface);
   border-bottom: 1px solid var(--r-line);
   backdrop-filter: blur(12px);
@@ -81,7 +104,7 @@
 .reader-bar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -90,6 +113,81 @@
   align-items: center;
   gap: 8px;
   flex: none;
+}
+
+/* 返回：顶栏左端的「出口」。
+   纯图标那版太像装饰，用户扫一眼找不到出口，就顺手去点窗口右上角的 ×——
+   那里是退出整个程序。所以：有字、有底、有边框，左侧再嵌一个浅色圆底把箭头托起来，
+   整块比右边的面板开关重一档，眼睛先落在它身上。 */
+.reader-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  /* 左边只留 4px：圆底自己有留白，再按文字按钮那样给 10px 会显得整块往右缩 */
+  padding: 0 12px 0 5px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: var(--r-ink);
+  background: var(--r-back-bg);
+  border: 1px solid var(--r-border);
+  border-radius: 9px;
+  cursor: pointer;
+  box-shadow: var(--r-back-shadow);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.1s ease;
+
+  &:hover {
+    background: var(--r-back-bg-hover);
+    border-color: var(--r-accent);
+    color: var(--r-accent);
+    box-shadow: 0 2px 7px rgba(40, 32, 22, 0.1), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  }
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 1px rgba(40, 32, 22, 0.08) inset;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--r-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* 箭头：实心圆底 + 矢量描边。① 矢量不依赖字形 baseline，没有「← 看着偏上」；
+   ② 实心圆是整条栏上唯一的重点色，扫一眼就知道出口在哪；
+   试过在外面加一圈同色柔光，浅色下像晕开的墨点、深色下浑成一团，撤掉更干净 */
+.reader-back-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--r-back-icon-ink);
+  background: var(--r-accent);
+  border-radius: 50%;
+  transition: transform 0.18s ease, filter 0.18s ease;
+
+  svg {
+    display: block;
+    /* 三角箭头的光学重心偏右，往左推半像素才像居中 */
+    margin-left: -0.5px;
+  }
+}
+
+.reader-back:hover .reader-back-icon {
+  /* 往外顶一下再提亮一点，暗示「退出去」 */
+  transform: translateX(-2px);
+  filter: brightness(1.08);
+}
+
+.reader-back-text {
+  /* 中文没有西文的侧边预留，靠一点点字距和右内边距撑开呼吸 */
+  margin-right: 1px;
 }
 
 .reader-icon-btn {
@@ -105,6 +203,7 @@
   background: transparent;
   border: none;
   border-radius: 8px;
+  cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 
   &:hover {
@@ -139,27 +238,71 @@
   max-width: 42vw;
 }
 
+/* 顶栏右侧：目录 / Aa。同样要有边框和底色，跟返回按钮长成一个家族，
+   选中时整块填色——「现在开着哪个面板」必须一眼可辨 */
 .reader-btn {
   flex: none;
-  height: 28px;
-  padding: 0 12px;
-  font-size: 12px;
-  color: var(--r-ink-2);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  height: 32px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--r-ink);
+  background: var(--r-btn-bg);
+  border: 1px solid var(--r-border);
+  border-radius: 9px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(40, 32, 22, 0.05);
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 
   &:hover {
-    background: var(--r-hover);
-    color: var(--r-ink);
+    background: var(--r-btn-bg-hover);
+    border-color: var(--r-accent);
+    color: var(--r-accent);
   }
 
   &.reader-btn-on {
-    background: var(--r-hover);
-    border-color: var(--r-line);
-    color: var(--r-ink);
+    background: var(--r-accent);
+    border-color: var(--r-accent);
+    color: #fff;
+
+    &:hover {
+      background: var(--r-accent);
+      color: #fff;
+      filter: brightness(1.06);
+    }
   }
+}
+
+/* Aa 靠字形大小表达语义，字重比文字按钮再重一点 */
+.reader-btn-aa {
+  min-width: 46px;
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+}
+
+/* 书签数量：顶栏给个数字，用户才知道自己攒了几条 */
+.reader-btn-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-radius: 8px;
+  background: rgba(138, 106, 72, 0.14);
+  color: var(--r-accent);
+}
+
+.reader-btn-on .reader-btn-badge {
+  background: rgba(255, 255, 255, 0.26);
+  color: #fff;
 }
 
 /* ---------- 正文 ---------- */
@@ -262,7 +405,7 @@
 
 .reader-panel {
   position: absolute;
-  top: 60px;
+  top: 62px;
   right: 14px;
   width: 296px;
   padding: 14px 14px 8px;
@@ -329,11 +472,18 @@
   color: var(--r-ink);
 }
 
+/* 背景四档比别的行多一格，按钮收窄一点，「跟随」才不至于把
+   「背景」两个字的行撑到换行（面板固定 296px 宽） */
+.reader-seg-skins button {
+  min-width: 30px;
+  padding: 0 6px;
+}
+
 /* ---------- 目录抽屉 ---------- */
 
 .reader-toc {
   position: absolute;
-  top: 54px;
+  top: 56px;
   right: 0;
   bottom: 26px;
   width: 330px;
@@ -414,6 +564,209 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--r-ink-3);
+}
+
+/* ---------- 书签抽屉 ---------- */
+
+/* 与目录抽屉同一套外壳，窄一点：书签条目只有「章节名 + 百分比」两行 */
+.reader-marks {
+  width: 300px;
+}
+
+.reader-marks-add {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--r-line);
+}
+
+/* 虚线框：跟顶栏那些实心按钮区分开，这里表达的是「添加」而不是「切换」 */
+.reader-marks-add-btn {
+  height: 34px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--r-ink);
+  background: transparent;
+  border: 1px dashed var(--r-border);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: var(--r-btn-bg);
+    border-color: var(--r-accent);
+    color: var(--r-accent);
+  }
+}
+
+.reader-marks-here {
+  font-size: 11px;
+  color: var(--r-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-marks-empty {
+  margin: 0;
+  padding: 22px 18px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--r-ink-3);
+}
+
+.reader-mark {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--r-hover);
+  }
+}
+
+.reader-mark-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 8px 9px 16px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.reader-mark-chapter {
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--r-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-mark-meta {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink-3);
+}
+
+/* 删除平时藏起来（书签列表要干净），悬停或键盘聚焦时才露头 */
+.reader-mark-del {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--r-ink-3);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(180, 84, 61, 0.12);
+    color: #b4543d;
+  }
+}
+
+.reader-mark:hover .reader-mark-del,
+.reader-mark-del:focus-visible {
+  opacity: 1;
+}
+
+/* 备注：平时一行淡淡的字（没写就是「＋ 备注」），点了原地变输入框。
+   按钮用描边而非实心——夜间主题的暗金底上压白字只有 3:1，不值得为一个次要按钮冒险 */
+.reader-mark-note {
+  width: 100%;
+  padding: 0 14px 9px 16px;
+  font-size: 12px;
+  line-height: 1.65;
+  text-align: left;
+  color: var(--r-ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.14s ease;
+  /* 备注可能很长，最多两行，再多就省略 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  &:hover {
+    color: var(--r-accent);
+  }
+
+  &.has-note {
+    color: var(--r-ink-2);
+  }
+}
+
+.reader-mark-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 14px 10px 16px;
+}
+
+.reader-mark-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--r-ink);
+  background: var(--r-btn-bg);
+  border: 1px solid var(--r-border);
+  border-radius: 7px;
+  outline: none;
+
+  &:focus {
+    border-color: var(--r-accent);
+  }
+
+  &::placeholder {
+    color: var(--r-ink-3);
+  }
+}
+
+.reader-mark-edit-actions {
+  display: flex;
+  gap: 6px;
+
+  button {
+    padding: 2px 9px;
+    font-size: 11.5px;
+    color: var(--r-ink-2);
+    background: transparent;
+    border: 1px solid var(--r-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.14s ease, border-color 0.14s ease;
+
+    &:hover {
+      color: var(--r-accent);
+      border-color: var(--r-accent);
+    }
+
+    &:first-child {
+      color: var(--r-accent);
+      border-color: var(--r-accent);
+    }
+  }
 }
 
 /* ---------- PDF ---------- */
@@ -537,4 +890,460 @@
     border-color: var(--r-accent);
     background: var(--r-bg);
   }
+}
+
+/* ---------- 文内搜索 ---------- */
+
+/* 比目录抽屉宽一点：命中条目要放下「章节名 + 百分比 + 两行摘要」 */
+.reader-search {
+  width: 348px;
+}
+
+.reader-search-form {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px 10px;
+}
+
+.reader-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--r-ink);
+  background: var(--r-btn-bg);
+  border: 1px solid var(--r-border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &::placeholder {
+    color: var(--r-ink-3);
+  }
+
+  &:focus {
+    border-color: var(--r-accent);
+    box-shadow: 0 0 0 3px rgba(138, 106, 72, 0.14);
+  }
+}
+
+.reader-search-step {
+  flex: none;
+  width: 28px;
+  height: 32px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--r-ink-2);
+  background: transparent;
+  border: 1px solid var(--r-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--r-hover);
+    color: var(--r-ink);
+  }
+
+  &:disabled {
+    opacity: 0.38;
+    cursor: default;
+  }
+}
+
+.reader-search-meta {
+  flex: none;
+  padding: 0 16px 10px;
+  font-size: 11.5px;
+  color: var(--r-ink-3);
+  border-bottom: 1px solid var(--r-line);
+}
+
+.reader-search-list {
+  padding: 4px 0 12px;
+}
+
+.reader-search-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 16px;
+  color: var(--r-ink-2);
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: var(--r-hover);
+  }
+
+  /* 左边一道主色竖线：跳转之后回头看一眼，能立刻找到「我刚才在第几条」 */
+  &.on {
+    background: var(--r-hover);
+    border-left-color: var(--r-accent);
+    color: var(--r-ink);
+  }
+}
+
+.reader-search-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+}
+
+.reader-search-chapter {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--r-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-search-pct {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink-3);
+}
+
+/* 摘要两行封顶：列表是「扫一眼挑一条」，不该被长段落撑成一堵墙 */
+.reader-search-snip {
+  font-size: 12.5px;
+  line-height: 1.62;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+
+  mark {
+    background: rgba(232, 178, 74, 0.5);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+}
+
+.reader-search-tip {
+  flex: none;
+  padding: 8px 16px 12px;
+  font-size: 11px;
+  color: var(--r-ink-3);
+  border-top: 1px solid var(--r-line);
+}
+
+/* ---------- 命中高亮（TXT / PDF） ---------- */
+
+/* 琥珀底而不是浏览器默认的亮黄：夜间主题下亮黄会刺眼，而且跟纸色不搭 */
+.reader-hit {
+  background: rgba(232, 178, 74, 0.42);
+  color: inherit;
+  border-radius: 2px;
+  /* 别加左右 padding：TXT 的段落高度是实测的，多 1px 就可能让某行提前折行，整段变高、位置乱跳 */
+  padding: 0;
+  box-shadow: 0 0 0 1px rgba(200, 148, 48, 0.22);
+}
+
+/* PDF 文本层的字是透明的，加底色就等于给命中框了个框 */
+.pdf-page .textLayer span.pdf-hit {
+  background: rgba(232, 178, 74, 0.45);
+  border-radius: 2px;
+}
+
+/* ---------- 划线批注（R4-c） ---------- */
+
+/* 正文里的划线：底色比搜索命中淡一档，两者叠在一起时还能看出下面还有一条线。
+   padding 同样必须是 0 —— TXT 的段落高度是实测的，多 1px 就可能提前折行。 */
+.reader-anno {
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+
+.reader-anno-amber {
+  background: rgba(232, 178, 74, 0.44);
+  box-shadow: inset 0 -2px 0 rgba(214, 158, 44, 0.55);
+}
+
+.reader-anno-sage {
+  background: rgba(126, 176, 132, 0.42);
+  box-shadow: inset 0 -2px 0 rgba(96, 152, 104, 0.5);
+}
+
+.reader-anno-sky {
+  background: rgba(122, 162, 212, 0.42);
+  box-shadow: inset 0 -2px 0 rgba(86, 130, 190, 0.5);
+}
+
+/* 正在编辑的那条：加一圈描边，一堆黄线里一眼能认出是哪一条 */
+.reader-anno.on {
+  outline: 1px solid var(--r-accent);
+  outline-offset: 1px;
+}
+
+/* PDF 的字是透明的，只能靠底色把「这一行被划了」画出来 */
+.pdf-page .textLayer span.pdf-anno {
+  border-radius: 2px;
+}
+
+.pdf-page .textLayer span.pdf-anno-amber {
+  background: rgba(232, 178, 74, 0.3);
+  box-shadow: inset 0 -2px 0 rgba(214, 158, 44, 0.55);
+}
+
+.pdf-page .textLayer span.pdf-anno-sage {
+  background: rgba(126, 176, 132, 0.28);
+  box-shadow: inset 0 -2px 0 rgba(96, 152, 104, 0.5);
+}
+
+.pdf-page .textLayer span.pdf-anno-sky {
+  background: rgba(122, 162, 212, 0.28);
+  box-shadow: inset 0 -2px 0 rgba(86, 130, 190, 0.5);
+}
+
+.pdf-page .textLayer span.pdf-anno-on {
+  outline: 1px solid var(--r-accent);
+}
+
+/* ---------- 批注抽屉 ---------- */
+
+.reader-annos {
+  width: 320px;
+}
+
+.reader-anno-item {
+  display: flex;
+  align-items: flex-start;
+  padding-right: 6px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--r-hover);
+  }
+
+  &.on {
+    background: var(--r-hover);
+  }
+}
+
+.reader-anno-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 9px;
+  padding: 10px 4px 10px 12px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+/* 左侧色条：比小圆点更容易在一列里对齐，也不占横向空间 */
+.reader-anno-bar {
+  flex: none;
+  width: 3px;
+  border-radius: 2px;
+  align-self: stretch;
+  min-height: 18px;
+}
+
+.dot-amber {
+  background: rgb(226, 170, 56);
+}
+
+.dot-sage {
+  background: rgb(108, 164, 116);
+}
+
+.dot-sky {
+  background: rgb(96, 142, 200);
+}
+
+.reader-anno-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* 摘录两行封顶：列表是扫一眼挑一条，不该被长段落撑成一堵墙 */
+.reader-anno-item-text {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--r-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.reader-anno-item-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--r-ink-2);
+  padding-left: 7px;
+  border-left: 2px solid var(--r-line);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.reader-anno-item-meta {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-anno-item-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-top: 8px;
+}
+
+/* ---------- 划线浮层 ---------- */
+
+/* 跟着选区走，所以是 fixed：滚动时让它自己退出（滚动会触发重新选区/关闭） */
+.reader-anno-pop {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 12px 10px;
+  background: var(--r-surface);
+  border: 1px solid var(--r-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(30, 26, 20, 0.18);
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+
+  &.on {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reader-anno-pop-quote {
+  font-size: 12px;
+  line-height: 1.62;
+  color: var(--r-ink-2);
+  padding-left: 8px;
+  border-left: 2px solid var(--r-accent);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.reader-anno-pop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reader-anno-dots {
+  display: flex;
+  gap: 7px;
+}
+
+/* 色点是「点了就存」的按钮，不是单选框：所以要有可点的面积与手型 */
+.reader-anno-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+
+  &:hover {
+    transform: scale(1.12);
+  }
+
+  &.on {
+    border-color: var(--r-ink);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.reader-anno-pop-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reader-anno-pop-del,
+.reader-anno-pop-cancel {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  color: var(--r-ink-2);
+  background: transparent;
+  border: 1px solid var(--r-border);
+  border-radius: 7px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--r-ink);
+    background: var(--r-btn-bg);
+  }
+}
+
+.reader-anno-pop-del:hover {
+  color: rgb(179, 84, 63);
+  border-color: rgba(179, 84, 63, 0.5);
+}
+
+.reader-anno-pop-note {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--r-ink);
+  background: var(--r-bg);
+  border: 1px solid var(--r-border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  resize: vertical;
+  outline: none;
+
+  &:focus {
+    border-color: var(--r-accent);
+  }
+
+  &::placeholder {
+    color: var(--r-ink-3);
+  }
+}
+
+.reader-anno-pop-tip {
+  font-size: 10.5px;
+  color: var(--r-ink-3);
 }

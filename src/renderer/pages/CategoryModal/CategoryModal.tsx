@@ -102,6 +102,21 @@ export default function CategoryModal({ open, onClose, onChanged }: Props) {
     }
   }
 
+  /** 导入预置分类树：幂等，同名同级的跳过，不会覆盖已有分类的名字与备注 */
+  const importPresets = async () => {
+    try {
+      const r = await api.seed.apply('category')
+      toast(
+        r.categories_added > 0
+          ? `已导入 ${r.categories_added} 个分类${r.categories_skipped > 0 ? `，跳过 ${r.categories_skipped} 个已存在` : ''}`
+          : '预设分类都在了，没有新增',
+      )
+      refresh()
+    } catch (e) {
+      toast(errorText(e), 'error')
+    }
+  }
+
   const flat = flattenCategories(categories).filter((c) => c.id !== form.id)
 
   return (
@@ -116,7 +131,12 @@ export default function CategoryModal({ open, onClose, onChanged }: Props) {
 
         <div className="category-manage-body">
           <div className="category-tree-pane">
-            <div className="pane-tip">拖拽同级节点可调整排序</div>
+            <div className="pane-tip">
+              <span>拖拽同级节点可调整排序</span>
+              <button className="link-btn" onClick={() => void importPresets()}>
+                导入预设分类
+              </button>
+            </div>
             <CategoryTree
               dataVersion={version}
               manageMode

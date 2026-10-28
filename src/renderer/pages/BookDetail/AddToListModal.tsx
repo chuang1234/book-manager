@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, errorText } from '../../api'
 import { useToast } from '../../components/Toast'
 import type { BookList } from '../../../shared/types'
@@ -16,32 +16,46 @@ export default function AddToListModal({ bookId, open, onClose, onChanged }: Pro
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
-  const loadedRef = useRef(false)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    if (!open || loadedRef.current) return
-    loadedRef.current = true
+    if (!open) return
     let alive = true
-    Promise.all([api.list.list(), api.list.forBook(bookId)])
-      .then(([all, mine]) => {
-        if (!alive) return
-        setLists(all)
-        setChecked(new Set(mine))
+    // 两个请求独立容错：书单列表挂了不该连预勾选一起丢，反之亦然。
+    // 注意这里不能加「只加载一次」的 ref 守卫——StrictMode 的开发模式会
+    // 挂载两次（effect → cleanup → effect），守卫会让第二次不再发请求，
+    // 而第一次的结果又被 cleanup 作废，弹窗就永远空白。
+    // 本组件由父级条件渲染（关即卸载、开即重挂），重开天然会重新加载。
+    api.list
+      .list()
+      .then((all) => {
+        if (alive) setLists(all)
+      })
+      .catch((e) => {
+        if (alive) {
+          setLoadError(errorText(e))
+          toast(`书单列表加载失败：${errorText(e)}`, 'error')
+        }
+      })
+    api.list
+      .forBook(bookId)
+      .then((mine) => {
+        if (alive) setChecked(new Set(mine))
       })
       .catch(() => {
-        /* 忽略 */
+        /* 预勾选失败只是少了勾选状态，勾选本身仍可用 */
       })
     return () => {
       alive = false
     }
   }, [open, bookId])
 
-  // 关闭后允许下次重新加载
+  // 关闭后清掉临态，下次打开是干净的
   useEffect(() => {
     if (!open) {
-      loadedRef.current = false
       setCreating(false)
       setNewName('')
+      setLoadError('')
     }
   }, [open])
 
@@ -94,11 +108,12 @@ export default function AddToListModal({ bookId, open, onClose, onChanged }: Pro
         </div>
 
         <div className="add-to-list-body">
-          {lists.length === 0 && !creating && (
+          {loadError && <p className="detail-empty-hint">书单加载失败：{loadError}</p>}
+          {lists.length === 0 && !creating && !loadError && (
             <p className="detail-empty-hint">还没有书单，下面新建一个吧。</p>
           )}
           {lists.map((l) => (
-            <label key={l.id} className="list-check-item">
+            <label key={l.id} className={`list-check-item${checked.has(l.id) ? ' list-check-on' : ''}`}>
               <input
                 type="checkbox"
                 checked={checked.has(l.id)}

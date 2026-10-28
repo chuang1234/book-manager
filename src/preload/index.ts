@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { BookApi } from '../shared/api'
 import type { EbookFormat } from '../shared/types'
+import type { ThemeMode, ThemeState } from '../shared/theme'
 
 const api: BookApi = {
   category: {
@@ -15,8 +16,10 @@ const api: BookApi = {
     get: (id) => ipcRenderer.invoke('book:get', id),
     create: (input) => ipcRenderer.invoke('book:create', input),
     update: (input) => ipcRenderer.invoke('book:update', input),
+    rate: (id, rating) => ipcRenderer.invoke('book:rate', id, rating),
     softDelete: (id) => ipcRenderer.invoke('book:softDelete', id),
     setTags: (id, names) => ipcRenderer.invoke('book:setTags', id, names),
+    batch: (ids, action) => ipcRenderer.invoke('book:batch', ids, action),
     openEbook: (id) => ipcRenderer.invoke('book:openEbook', id),
     revealEbook: (id) => ipcRenderer.invoke('book:revealEbook', id),
     bindEbook: (id) => ipcRenderer.invoke('book:bindEbook', id),
@@ -30,6 +33,10 @@ const api: BookApi = {
     forBook: (bookId) => ipcRenderer.invoke('tag:forBook', bookId),
     rename: (id, name) => ipcRenderer.invoke('tag:rename', id, name),
     remove: (id) => ipcRenderer.invoke('tag:remove', id),
+  },
+  /** 预置分类 / 常用标签：幂等，已存在的自动跳过 */
+  seed: {
+    apply: (target) => ipcRenderer.invoke('seed:apply', target),
   },
   attachment: {
     pick: (bookId) => ipcRenderer.invoke('attachment:pick', bookId),
@@ -68,6 +75,30 @@ const api: BookApi = {
     position: (bookId) => ipcRenderer.invoke('reader:position', bookId),
     savePosition: (bookId, input) => ipcRenderer.invoke('reader:savePosition', bookId, input),
     section: (bookId, index) => ipcRenderer.invoke('reader:section', bookId, index),
+    search: (bookId, query) => ipcRenderer.invoke('reader:search', bookId, query),
+    setActive: (title) => ipcRenderer.invoke('reader:setActive', title),
+    addSession: (bookId, seconds) => ipcRenderer.invoke('reader:addSession', bookId, seconds),
+    bookStats: (bookId) => ipcRenderer.invoke('reader:bookStats', bookId),
+    onBackToShelf: (cb) => {
+      const listener = () => cb()
+      ipcRenderer.on('reader:backToShelf', listener)
+      return () => {
+        ipcRenderer.removeListener('reader:backToShelf', listener)
+      }
+    },
+  },
+  bookmark: {
+    list: (bookId) => ipcRenderer.invoke('bookmark:list', bookId),
+    add: (bookId, input) => ipcRenderer.invoke('bookmark:add', bookId, input),
+    updateNote: (bookId, id, note) => ipcRenderer.invoke('bookmark:updateNote', bookId, id, note),
+    remove: (bookId, id) => ipcRenderer.invoke('bookmark:remove', bookId, id),
+  },
+  annotation: {
+    list: (bookId) => ipcRenderer.invoke('annotation:list', bookId),
+    add: (bookId, input) => ipcRenderer.invoke('annotation:add', bookId, input),
+    update: (bookId, id, patch) => ipcRenderer.invoke('annotation:update', bookId, id, patch),
+    remove: (bookId, id) => ipcRenderer.invoke('annotation:remove', bookId, id),
+    count: (bookId) => ipcRenderer.invoke('annotation:count', bookId),
   },
   trash: {
     list: () => ipcRenderer.invoke('trash:list'),
@@ -103,6 +134,32 @@ const api: BookApi = {
   stats: {
     home: () => ipcRenderer.invoke('stats:home'),
     recentReading: (limit) => ipcRenderer.invoke('stats:recentReading', limit),
+    overview: (range) => ipcRenderer.invoke('stats:overview', range),
+  },
+  data: {
+    export: (format) => ipcRenderer.invoke('data:export', format),
+    backupNow: () => ipcRenderer.invoke('data:backupNow'),
+    backups: () => ipcRenderer.invoke('data:backups'),
+    restore: () => ipcRenderer.invoke('data:restore'),
+    deleteBackup: (file) => ipcRenderer.invoke('data:deleteBackup', file),
+  },
+  theme: {
+    // sendSync 只用于这一处开机读取：换取「首帧就是对的颜色」
+    initial: () => ipcRenderer.sendSync('theme:initial') as ThemeState,
+    setMode: (mode: ThemeMode) => ipcRenderer.invoke('theme:setMode', mode),
+    onChange: (cb) => {
+      const listener = (_e: unknown, state: ThemeState) => cb(state)
+      ipcRenderer.on('theme:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('theme:changed', listener)
+      }
+    },
+  },
+  card: {
+    /** 保存 PNG，返回落盘路径；用户取消返回 null */
+    save: (dataUrl, defaultName) => ipcRenderer.invoke('card:save', dataUrl, defaultName),
+    /** 复制到系统剪贴板 */
+    copy: (dataUrl) => ipcRenderer.invoke('card:copy', dataUrl),
   },
   ebookFormats: ['pdf', 'epub', 'mobi', 'txt'] as EbookFormat[],
 }

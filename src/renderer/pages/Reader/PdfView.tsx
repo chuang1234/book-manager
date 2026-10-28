@@ -9,6 +9,9 @@ import {
 } from 'react'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayerRenderTask } from 'pdfjs-dist'
 import { loadPdfEngine, type PdfEngine } from './pdfEngine'
+import { decodeAnchor, encodeAnchor, splitCrossPage } from '../../../shared/annotation'
+import type { Annotation } from '../../../shared/types'
+import { elementOf, rectOf, type TextPick, type ViewRect } from './anno'
 import type { ReadViewHandle } from './view'
 
 interface Props {
@@ -18,6 +21,14 @@ interface Props {
   zoom: 'fit' | number
   /** 打开时恢复到的页码（1 基） */
   initialPage: number
+  /** 搜索命中：标在这一页的文本层上（跨 span 的词标不全，但够指路，跳转本身按页码一定准） */
+  mark?: { page: number; query: string } | null
+  /** 本书的全部划线（PDF 口径的会被画出来） */
+  annos?: Annotation[]
+  activeAnnoId?: number | null
+  /** 选区交给 Reader：跨页划线会是多条，其余恒为单条数组 */
+  onPick?: (picks: TextPick[] | null) => void
+  onAnnoClick?: (id: number, rect: ViewRect) => void
   ctl?: RefObject<ReadViewHandle | null>
   /** onProgress(当前页, 百分比, 总页数) */
   onProgress: (page: number, percent: number, total: number) => void
@@ -36,6 +47,7 @@ const MAX_STAGE_WIDTH = 1500
 interface Slot {
   page: PDFPageProxy
   canvas: HTMLCanvasElement
+  textLayer: HTMLDivElement
   task: RenderTask | null
   textTask: TextLayerRenderTask | null
   scale: number
@@ -75,7 +87,7 @@ function indexAt(tops: number[], y: number): number {
  * 一部 500 页的扫描件才不会一口气吃掉几个 G 内存。
  */
 function PdfView(props: Props) {
-  const { data, zoom, initialPage, ctl, onProgress } = props
+  const { data, zoom, initialPage, mark, annos, activeAnnoId, onPick, onAnnoClick, ctl, onProgress } = props
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const elRefs = useRef<Array<HTMLDivElement | null>>([])
@@ -103,6 +115,104 @@ function PdfView(props: Props) {
 
   const reportRef = useRef<() => void>(() => {})
   const updateRef = useRef<() => void>(() => {})
+  /** 搜索命中：放 ref 里给 renderPage 用，免得它每次渲染都要重新闭包 */
+  const markRef = useRef<{ page: number; query: string } | null>(null)
+  markRef.current = mark ?? null
+  /** 划线同样放 ref：renderPage 是异步的，闭包里的旧列表会把刚划的线漏掉 */
+  const annoRef = useRef<Annotation[]>(annos ?? [])
+  annoRef.current = annos ?? []
+  const activeAnnoRef = useRef<number | null>(activeAnnoId ?? null)
+  activeAnnoRef.current = activeAnnoId ?? null
+
+  /**
+   * 文本层里的「叶子 span」。pdfjs 会给一段 marked content 再套一层 span，
+   * 直接 querySelectorAll('span') 会把内层的文本重复算两遍，拼接串就对不上了。
+   */
+  function leafSpans(textLayer: HTMLElement): HTMLElement[] {
+    return Array.from(textLayer.querySelectorAll<HTMLElement>('span')).filter(
+      (s) => !s.querySelector('span'),
+    )
+  }
+
+  /**
+   * 在文本层里标出命中的词。
+   * 只能逐个 span 匹配：pdfjs 按文字块切 span，一个词被拆进两个 span 时标不全。
+   * 高亮只是指路，真正保证跳得准的是页码，所以这里可以容忍不完美。
+   */
+  function applyMark(i: number, textLayer: HTMLElement): void {
+    const spans = textLayer.querySelectorAll<HTMLElement>('span')
+    for (const sp of spans) sp.classList.remove('pdf-hit')
+    const m = markRef.current
+    if (!m || m.page !== i + 1 || !m.query) return
+    const q = m.query.toLowerCase()
+    for (const sp of spans) {
+      if ((sp.textContent || '').toLowerCase().includes(q)) sp.classList.add('pdf-hit')
+    }
+  }
+
+  /**
+   * 把这一页的划线画出来。
+   * 按「叶子 span 文本拼接」的偏移量算区间，跟选区时用的是同一套坐标，
+   * 所以跨行的划线也能标到每一行对应的 span 上（不会只标第一行）。
+   */
+  function applyAnnos(i: number, textLayer: HTMLElement): void {
+    const spans = leafSpans(textLayer)
+    for (const sp of spans) {
+      sp.classList.remove('pdf-anno', 'pdf-anno-amber', 'pdf-anno-sage', 'pdf-anno-sky', 'pdf-anno-on')
+      sp.removeAttribute('data-anno')
+    }
+    const list = annoRef.current
+    if (list.length === 0 || spans.length === 0) return
+    const pageNo = i + 1
+    const starts: number[] = []
+    let acc = 0
+    for (const sp of spans) {
+      starts.push(acc)
+      acc += (sp.textContent ?? '').length
+    }
+    for (const a of list) {
+      const an = decodeAnchor(a.anchor)
+      if (!an || an.k !== 'pdf' || an.page !== pageNo) continue
+      for (let k = 0; k < spans.length; k++) {
+        const len = (spans[k].textContent ?? '').length
+        if (len === 0) continue
+        const s = starts[k]
+        if (s + len <= an.start || s >= an.end) continue
+        const sp = spans[k]
+        sp.classList.add('pdf-anno', `pdf-anno-${a.color}`)
+        if (activeAnnoRef.current === a.id) sp.classList.add('pdf-anno-on')
+        sp.dataset.anno = String(a.id)
+      }
+    }
+  }
+
+  /**
+   * 找某条划线在文本层里的第一个 span，返回「第几页（0 基）+ 页内偏移」。
+   * 只认已经渲染出文本层的页：没渲染的页本来也没有 <mark> 可指。
+   */
+  function findAnnoSpan(id: number): { pageIndex: number; top: number } | null {
+    for (const [i, slot] of slotsRef.current) {
+      if (!slot.textLayer) continue
+      const sp = slot.textLayer.querySelector<HTMLElement>(`[data-anno="${id}"]`)
+      const el = elRefs.current[i]
+      if (!sp || !el) continue
+      return { pageIndex: i, top: sp.getBoundingClientRect().top - el.getBoundingClientRect().top }
+    }
+    return null
+  }
+
+
+  // 命中变了：已经渲染好的页就地重标，不必重画 canvas
+  useEffect(() => {
+    for (const [i, slot] of slotsRef.current) applyMark(i, slot.textLayer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mark])
+
+  // 划线增删改 / 切换编辑对象：同样就地重标，不重画
+  useEffect(() => {
+    for (const [i, slot] of slotsRef.current) applyAnnos(i, slot.textLayer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annos, activeAnnoId])
 
   /* ---------------- 打开文档 ---------------- */
 
@@ -324,7 +434,7 @@ function PdfView(props: Props) {
         viewport: vp,
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
       })
-      const slot: Slot = { page, canvas, task, textTask: null, scale: current }
+      const slot: Slot = { page, canvas, textLayer, task, textTask: null, scale: current }
       slotsRef.current.set(i, slot)
       await task.promise
 
@@ -340,6 +450,11 @@ function PdfView(props: Props) {
       })
       slot.textTask = textTask
       await textTask.promise
+      // 文本层就绪才有 span 可标；只在命中页做，别的页不用白扫一遍
+      if (elRefs.current[i] === el) {
+        applyMark(i, textLayer)
+        applyAnnos(i, textLayer)
+      }
     } catch (e) {
       // 取消渲染会抛 RenderingCancelledException，属正常路径
       const name = e && typeof e === 'object' && 'name' in e ? String((e as { name: unknown }).name) : ''
@@ -442,10 +557,130 @@ function PdfView(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scale, total])
 
+  /**
+   * 把某条划线滚到视口上方。
+   * 跳页只能把页码顶到视口顶上，划线在页面下半部分时还在屏幕外，
+   * 所以页落位之后还要按文本层 span 的真实位置再校一次。
+   * 目标页的画布/文本层是异步渲染的（跳到远处的页要等解析），这里用 rAF 重试。
+   */
+  const focusAnno = (id: number): void => {
+    let left = 90
+    const step = () => {
+      const c = scrollRef.current
+      if (!c) return
+      const info = findAnnoSpan(id)
+      if (!info) {
+        if (--left > 0) requestAnimationFrame(step)
+        return
+      }
+      const { pageIndex, top } = info
+      const max = Math.max(0, c.scrollHeight - c.clientHeight)
+      const want = Math.min(max, Math.max(0, pageTop(pageIndex) + top - 96))
+      if (Math.abs(want - c.scrollTop) > 1) {
+        c.scrollTop = want
+      }
+      updateRef.current()
+      reportRef.current()
+    }
+    requestAnimationFrame(step)
+  }
+
   useImperativeHandle(ctl, () => ({
     goTo: (pos: number) => jumpToPage(pos),
+    scrollToAnno: (id: number) => focusAnno(id),
     scrollPage: (dir: 1 | -1) => jumpToPage(pageRef.current + dir),
   }))
+
+  /* ---------------- 选区 → 锚点 ---------------- */
+
+  const onMouseUp = (e: React.MouseEvent): void => {
+    if (!onPick) return
+    const hit = (e.target as HTMLElement).closest('span.pdf-anno') as HTMLElement | null
+    if (hit) {
+      const id = Number(hit.dataset.anno)
+      const r = hit.getBoundingClientRect()
+      if (Number.isFinite(id)) onAnnoClick?.(id, { x: r.left, y: r.top, w: r.width, h: r.height })
+      return
+    }
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      onPick(null)
+      return
+    }
+    const range = sel.getRangeAt(0)
+    const pageEl = elementOf(range.startContainer)?.closest('.pdf-page') as HTMLElement | null
+    const pageEnd = elementOf(range.endContainer)?.closest('.pdf-page') as HTMLElement | null
+    if (!pageEl || !pageEnd) {
+      onPick(null)
+      return
+    }
+    const pageNo = Number(pageEl.dataset.page)
+    const pageEndNo = Number(pageEnd.dataset.page)
+    if (!Number.isFinite(pageNo) || !Number.isFinite(pageEndNo)) {
+      onPick(null)
+      return
+    }
+
+    /** 一页的叶子 span 拼接串；页没渲染（无文本层）返回 null */
+    const pageTexts = (p: number): { spans: HTMLElement[]; full: string } | null => {
+      const el = p === pageNo ? pageEl : p === pageEndNo ? pageEnd : (document.querySelector(`.pdf-page[data-page="${p}"]`) as HTMLElement | null)
+      const layer = el?.querySelector('.textLayer') as HTMLElement | null
+      if (!layer) return null
+      const spans = leafSpans(layer)
+      return { spans, full: spans.map((sp) => sp.textContent ?? '').join('') }
+    }
+
+    /** 某页拼接串上，(node, offset) 的偏移 */
+    const makeOffsetIn = (spans: HTMLElement[]) => (node: Node, off: number): number => {
+      let acc = 0
+      for (const sp of spans) {
+        const len = (sp.textContent ?? '').length
+        if (sp.contains(node)) {
+          const r = document.createRange()
+          r.selectNodeContents(sp)
+          try {
+            r.setEnd(node, off)
+          } catch {
+            return acc
+          }
+          return acc + r.toString().length
+        }
+        acc += len
+      }
+      return -1
+    }
+
+    const startTexts = pageTexts(pageNo)
+    const endTexts = pageTexts(pageEndNo)
+    if (!startTexts || !endTexts) {
+      onPick(null)
+      return
+    }
+    const startOffset = makeOffsetIn(startTexts.spans)(range.startContainer, range.startOffset)
+    const endOffset = makeOffsetIn(endTexts.spans)(range.endContainer, range.endOffset)
+    if (startOffset < 0 || endOffset < 0) {
+      onPick(null)
+      return
+    }
+
+    // 跨页选区按页拆成多条（一页一个坐标系）；任何一页还没渲染就整体放弃
+    const parts = splitCrossPage(
+      { page: pageNo, offset: startOffset },
+      { page: pageEndNo, offset: endOffset },
+      (p) => (p === pageNo ? startTexts.full.length : p === pageEndNo ? endTexts.full.length : (pageTexts(p)?.full.length ?? null)),
+    )
+    if (!parts) {
+      onPick(null)
+      return
+    }
+    const rect = rectOf(range)
+    onPick(
+      parts.map(({ page, start, end }) => {
+        const full = page === pageNo ? startTexts.full : page === pageEndNo ? endTexts.full : (pageTexts(page)?.full ?? '')
+        return { anchor: encodeAnchor({ k: 'pdf', page, start, end }), text: full.slice(start, end), rect }
+      }),
+    )
+  }
 
   /* ---------------- 输出 ---------------- */
 
@@ -462,7 +697,7 @@ function PdfView(props: Props) {
   const pageH = base ? Math.round(base.h * (scale || 1)) : 0
 
   return (
-    <div className="reader-scroll reader-pdf" ref={scrollRef} onScroll={onScroll}>
+    <div className="reader-scroll reader-pdf" ref={scrollRef} onScroll={onScroll} onMouseUp={onMouseUp}>
       {status === 'loading' || total === 0 ? (
         <div className="reader-center">正在解析 PDF…</div>
       ) : (

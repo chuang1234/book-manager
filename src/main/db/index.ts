@@ -6,12 +6,27 @@ import { SCHEMA_SQL } from './schema'
 
 let db: Database.Database | null = null
 
+/** 库文件路径（备份 / 恢复要拿它） */
+export function dbFile(): string {
+  return path.join(app.getPath('userData'), 'library.db')
+}
+
+/** 关闭连接：恢复备份前必须调，否则 Windows 上文件被占用替换不了 */
+export function closeDb(): void {
+  if (!db) return
+  try {
+    db.close()
+  } finally {
+    db = null
+  }
+}
+
 /** 懒加载单例：首次调用时建库、建表 */
 export function getDb(): Database.Database {
   if (db) return db
   const dir = app.getPath('userData')
   fs.mkdirSync(dir, { recursive: true })
-  db = new Database(path.join(dir, 'library.db'))
+  db = new Database(dbFile())
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA_SQL)
@@ -54,5 +69,39 @@ function migrate(target: Database.Database): void {
       percent REAL NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
+
+    CREATE TABLE IF NOT EXISTS bookmark (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      book_id INTEGER NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+      locator TEXT NOT NULL DEFAULT '',
+      percent REAL NOT NULL DEFAULT 0,
+      chapter TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      create_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_bookmark_book ON bookmark(book_id);
+
+    CREATE TABLE IF NOT EXISTS reading_session (
+      book_id INTEGER NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+      day TEXT NOT NULL,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      update_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      PRIMARY KEY (book_id, day)
+    );
+    CREATE INDEX IF NOT EXISTS idx_reading_session_day ON reading_session(day);
+
+    CREATE TABLE IF NOT EXISTS annotation (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      book_id INTEGER NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+      anchor TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      color TEXT NOT NULL DEFAULT 'amber',
+      percent REAL NOT NULL DEFAULT 0,
+      chapter TEXT NOT NULL DEFAULT '',
+      create_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      update_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_annotation_book ON annotation(book_id);
   `)
 }

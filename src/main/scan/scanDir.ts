@@ -42,7 +42,8 @@ async function parseFile(
     return { meta: parseTxtMeta(path.basename(filePath), text), cover: null }
   }
   if (format === 'epub') return extractEpub(filePath)
-  if (format === 'mobi') return extractMobi(fs.readFileSync(filePath))
+  // AZW3 与 MOBI 同一个 PalmDB 容器，元数据解析复用同一份
+  if (format === 'mobi' || format === 'azw3') return extractMobi(fs.readFileSync(filePath))
   return extractPdf(fs.readFileSync(filePath))
 }
 
@@ -202,6 +203,10 @@ export async function commitScan(filePaths: string[]): Promise<ScanCommitResult>
           continue
         }
         const { meta, cover } = await parseFile(filePath, format)
+        // 与 scanFileList 同一套兜底：重启后缓存没了就地重解析，占位标题照样要换成文件名推的
+        const fromName = splitFileName(filePath)
+        if (isJunkTitle(meta.title)) meta.title = fromName.title
+        if (isJunkAuthor(meta.author)) meta.author = fromName.author
         commitOne({
           file_path: filePath,
           format,

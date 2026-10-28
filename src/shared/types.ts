@@ -1,7 +1,8 @@
+import type { Granularity, StatsRange } from './stats'
+
 /** 阅读状态：想读 / 在读 / 已读 */
 /** unread：未标记（导入/扫描进来的默认态，不代表「想读」） */
 export type ReadStatus = 'unread' | 'want' | 'reading' | 'read'
-
 /** 图书来源：手动录入 / 电子书扫描 / 批量导入 */
 export type BookSource = 'manual' | 'scan' | 'import'
 
@@ -21,6 +22,14 @@ export interface CategoryNode extends Category {
   children: CategoryNode[]
   /** 该分类 + 所有子分类下的图书总数（不含回收站） */
   book_count: number
+}
+
+/** 导入预置分类/标签的结果：added 是新建的，skipped 是已存在而跳过的 */
+export interface PresetResult {
+  categories_added: number
+  categories_skipped: number
+  tags_added: number
+  tags_skipped: number
 }
 
 export interface Book {
@@ -170,6 +179,30 @@ export interface BookListQuery {
   sortOrder?: SortOrder
 }
 
+/**
+ * 书架批量操作：一次事务里对多本书做同一件事。
+ *
+ * 标签刻意做成「加 / 减」而不是「设为」：批量场景下覆盖式写入等于
+ * 把每本书原有的标签全清掉——给 20 本加个「待读」，结果 20 本都只剩「待读」。
+ */
+export type BatchAction =
+  | { kind: 'status'; status: ReadStatus }
+  /** 追加标签（不存在的标签自动建，已有的跳过） */
+  | { kind: 'tag_add'; names: string[] }
+  /** 只摘掉列出的标签，其它标签原样保留 */
+  | { kind: 'tag_remove'; names: string[] }
+  | { kind: 'category'; categoryId: number | null }
+  | { kind: 'trash' }
+
+export interface BatchResult {
+  /** 实际处理的本数（状态没变也算处理成功——用户要的是「这些书现在都是已读」） */
+  changed: number
+  /** 跳过：书不存在或已在回收站 */
+  skipped: number
+  /** 标签动作落地后的标签名，供提示文案用 */
+  tags?: string[]
+}
+
 /** 录入 / 编辑表单字段（不含 id 与系统字段） */
 export interface BookInput {
   isbn: string
@@ -197,7 +230,7 @@ export interface BookInput {
 /** ---------- P1：本地电子书扫描 ---------- */
 
 /** 支持的电子书格式 */
-export type EbookFormat = 'pdf' | 'epub' | 'mobi' | 'txt'
+export type EbookFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'txt'
 
 /** 从电子书文件中提取出的元数据 */
 export interface EbookMeta {
@@ -362,6 +395,45 @@ export interface SavePositionInput {
   logEvent?: boolean
 }
 
+/** 阅读书签：读到哪里想留个记号，一本可以有很多条 */
+export interface Bookmark {
+  id: number
+  book_id: number
+  /** 与 reading_position.locator 同一套口径（offset / page / section） */
+  locator: string
+  /** 0~1 */
+  percent: number
+  /** 加书签时所在章节名（可能为空） */
+  chapter: string
+  note: string
+  create_time: string
+}
+
+/** 加书签的入参 */
+export interface AddBookmarkInput {
+  locator: string
+  percent: number
+  chapter?: string
+  note?: string
+}
+
+/**
+ * 单本图书的阅读时长统计。
+ * sessions 只回「有阅读记录的那几天」，缺的日期＝那天没读，
+ * 由界面自己补齐（不在这里生成空行，免得后端猜展示窗口）。
+ */
+export interface BookReadingStats {
+  book_id: number
+  /** 累计秒数（所有日期之和） */
+  total_seconds: number
+  /** 今日秒数 */
+  today_seconds: number
+  /** 按日期升序，最多回最近 30 天 */
+  sessions: Array<{ day: string; seconds: number }>
+  /** 最后一次有记录的日期（没读过为空串） */
+  last_day: string
+}
+
 /** 打开阅读器返回的整本书内容 */
 export interface ReaderBook {
   book: Book
@@ -404,3 +476,161 @@ export interface EpubSectionContent {
   /** 这一节自带的样式（url() 已改写为 data URL） */
   css: string
 }
+
+/* ------------------------------------------------------------------ *
+ * 文内搜索
+ * ------------------------------------------------------------------ */
+
+/**
+ * 一条命中。
+ * 主进程只负责「找到哪儿」，章节名与百分比由渲染层算——
+ * 那两个换算都依赖本书的目录与权重，渲染层本来就已经拿着了，再让主进程算一遍只会多一处不一致。
+ */
+export interface SearchHit {
+  /** 定位值：TXT 字符偏移 / PDF 页号（1 基）/ EPUB 1 基小数小节位置 */
+  pos: number
+  /** 命中点所在的段落 / 页 / 小节文本，前后各留一小段，单行展示 */
+  snippet: string
+  /** 关键词在 snippet 里的起点与长度（列表里做高亮） */
+  hit_start: number
+  hit_length: number
+  /** 同一文本块内的第几处（0 基）；EPUB 用它精确滚到那一处高亮 */
+  ordinal: number
+}
+
+export interface SearchResult {
+  /** 这次搜索实际用的关键词（已规整空白），渲染层据此判断「结果是不是这个词的」 */
+  query: string
+  hits: SearchHit[]
+  /** 命中总数；truncated 为 true 时表示「至少这么多」，界面显示成 300+ */
+  total: number
+  truncated: boolean
+}
+
+/* ------------------------------------------------------------------ *
+ * 划线批注
+ * ------------------------------------------------------------------ */
+
+/** 划线的底色。只有三种：再多就要开始纠结「这个绿和那个绿差在哪」 */
+export type AnnotationColor = 'amber' | 'sage' | 'sky'
+
+/**
+ * 批注的锚点。
+ * 三种格式的坐标系各按各的「拼接串」算，切片逻辑因此完全共用：
+ * - txt：整本正文那个字符串；
+ * - pdf：某一页文本层所有 span 的文本按顺序拼接；
+ * - epub：某一节文档里所有文本节点按文档顺序拼接。
+ * 拼接串在插入高亮、拆分文本节点之后依然等长等值，所以偏移量不会漂。
+ */
+export type AnnotationAnchor =
+  | { k: 'txt'; start: number; end: number }
+  | { k: 'pdf'; page: number; start: number; end: number }
+  | { k: 'epub'; section: number; start: number; end: number }
+
+/** 一条划线 / 批注 */
+export interface Annotation {
+  id: number
+  book_id: number
+  /** AnnotationAnchor 的 JSON 串 */
+  anchor: string
+  /** 划中的原文（列表里展示，不用再回原文里取一遍） */
+  text: string
+  /** 用户写的批注，可为空（纯划线） */
+  note: string
+  color: AnnotationColor
+  /** 0~1，列表按它升序＝按阅读顺序 */
+  percent: number
+  chapter: string
+  create_time: string
+  update_time: string
+}
+
+export interface AddAnnotationInput {
+  anchor: string
+  text: string
+  note?: string
+  color?: AnnotationColor
+  percent: number
+  chapter?: string
+}
+
+/** 只改这两样：位置不能改（改位置等于新建一条） */
+export interface AnnotationPatch {
+  note?: string
+  color?: AnnotationColor
+}
+
+/** 备份文件（列表展示用） */
+export interface BackupFile {
+  name: string
+  path: string
+  size: number
+  /** 备份时间（本地时间字符串，取自文件 mtime） */
+  time: string
+}
+
+/** ---------- 阅读统计 ---------- */
+
+/** 一段「名字 + 时长 + 本数」，分类 / 标签 / 格式共用 */
+export interface StatsBucket {
+  name: string
+  seconds: number
+  books: number
+}
+
+/** 趋势上的一个点：key 是按天的 YYYY-MM-DD 或按月的 YYYY-MM */
+export interface StatsPoint {
+  key: string
+  seconds: number
+}
+
+export interface StatsTopBook {
+  book_id: number
+  title: string
+  author: string
+  cover_path: string
+  /** 读到全书百分之几 */
+  percent: number
+  seconds: number
+}
+
+/**
+ * 统计页一次取全：范围切换时整页换数字，分五六个接口会增加
+ * 「切了范围、一半还是旧数」的窗口。
+ */
+export interface StatsOverview {
+  range: StatsRange
+  /** 起始日；'' = 不限（全部） */
+  from: string
+  to: string
+  granularity: Granularity
+  totals: {
+    seconds: number
+    /** 有阅读记录的天数 */
+    days: number
+    /** 有阅读记录的书本数 */
+    books: number
+    /** 区间内「读完」事件数 */
+    finished: number
+    /** 最长的一天 */
+    longest_day: string
+    longest_seconds: number
+    /** 连续阅读天数（今天没读就从昨天算起） */
+    streak: number
+    /** 产出：划线 / 笔记 / 书签 */
+    annos: number
+    notes: number
+    bookmarks: number
+  }
+  /** 已补空，横轴等距 */
+  trend: StatsPoint[]
+  /** 长度 7，周一 … 周日 */
+  weekdays: number[]
+  categories: StatsBucket[]
+  tags: StatsBucket[]
+  formats: StatsBucket[]
+  top_books: StatsTopBook[]
+  /** 全年热力图，固定近 371 天，不随范围变 */
+  heatmap: Array<{ day: string; seconds: number }>
+}
+

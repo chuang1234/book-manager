@@ -44,9 +44,34 @@
       background: var(--accent-soft);
     }
 
+    &.is-selected {
+      background: var(--accent-soft);
+
+      td {
+        color: var(--ink);
+      }
+    }
+
     &:last-child td {
       border-bottom: none;
     }
+  }
+
+  /* 勾选列：窄、居中、别抢书名的位置 */
+  .cell-check {
+    width: 36px;
+    padding-right: 0;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .cell-check-box {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    vertical-align: middle;
+    accent-color: var(--accent);
+    cursor: pointer;
   }
 
   .cell-title {
@@ -116,7 +141,7 @@
   &:hover {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
 }
 

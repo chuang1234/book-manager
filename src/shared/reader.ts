@@ -20,11 +20,15 @@ export function normalizeText(text: string): string {
 
 /**
  * 目前能在应用内直接阅读的格式。
- * TXT 走文本虚拟滚动，PDF 走 canvas 按页渲染，EPUB 走小节 + iframe；
- * MOBI 仍是「交给系统程序打开」——正文是 PalmDOC / HUFF-CDIC 压缩，
- * 没有现成依赖时自己解压的性价比太低，先不做。
+ * TXT 走文本虚拟滚动，PDF 走 canvas 按页渲染，EPUB / MOBI 走「小节 + iframe」。
+ * MOBI 自己解 PalmDOC；HUFF/CDIC 压缩的（部分亚马逊官方书）会明确提示用系统阅读器。
  */
-export const INLINE_READABLE_FORMATS = ['txt', 'pdf', 'epub']
+export const INLINE_READABLE_FORMATS = ['txt', 'pdf', 'epub', 'mobi', 'azw3']
+
+/** 分节模型的格式：进度是「第几节 + 节内比例」，渲染层走同一套 iframe */
+export function isSectionFormat(format: string): boolean {
+  return format === 'epub' || format === 'mobi' || format === 'azw3'
+}
 
 /** 小写扩展名（不带点），无扩展名返回空串 */
 export function fileExt(filePath: string): string {
@@ -95,6 +99,30 @@ export function splitChapters(text: string, paragraphs?: ReaderParagraph[]): Rea
   if (out.length === 0) return []
   if (out[0].offset > 0) out.unshift({ title: '开篇', offset: 0 })
   return out
+}
+
+/**
+ * 当前在目录的哪一条：chapters 按 offset 升序（TXT 是字符偏移、PDF 是页号、EPUB 是节号），
+ * 二分找最后一个 offset <= pos 的条目。空目录返回 -1。
+ *
+ * 放在这里是为了可单测，也为了让渲染层不必「靠百分比变化」去猜章节变没变——
+ * 前 1% 里跳目录时百分比根本不变，靠它触发会一直停在旧章。
+ */
+export function chapterIndexAt(chapters: ReaderChapter[], pos: number): number {
+  if (chapters.length === 0) return -1
+  let lo = 0
+  let hi = chapters.length - 1
+  let ans = 0
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (chapters[mid].offset <= pos) {
+      ans = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return ans
 }
 
 /**

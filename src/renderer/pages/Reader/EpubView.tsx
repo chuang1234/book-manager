@@ -16,10 +16,11 @@ import {
   sectionPrefix,
   splitSectionPos,
 } from '../../../shared/reader'
-import type { EpubSectionContent } from '../../../shared/types'
+import { encodeAnchor, type AnnoSpan } from '../../../shared/annotation'
+import type { ReaderPaint } from '../../../shared/theme'
+import type { EpubSectionContent, Annotation } from '../../../shared/types'
+import { epubSpans, type TextPick, type ViewRect } from './anno'
 import type { ReadViewHandle } from './view'
-
-type ReaderTheme = 'paper' | 'sepia' | 'night'
 
 interface Props {
   bookId: number
@@ -31,9 +32,18 @@ interface Props {
   lineHeight: number
   /** 版心最大宽度（px） */
   maxWidth: number
-  theme: ReaderTheme
+  /** 已解析好的纸页配色：'auto' 在 Reader 那边就换算成了纸白 / 夜间 */
+  theme: ReaderPaint
   /** 恢复位置：1 基小数小节位置（12.43 = 第 12 节读了 43%） */
   initialPos: number
+  /** 搜索命中：标在这一节的第 ordinal 处，落位也优先直接滚到那处高亮 */
+  mark?: { idx: number; query: string; ordinal: number } | null
+  /** 本书的全部划线（EPUB 口径的会被画出来） */
+  annos?: Annotation[]
+  activeAnnoId?: number | null
+  /** 选区交给 Reader：跨页划线会是多条，其余恒为单条数组 */
+  onPick?: (picks: TextPick[] | null) => void
+  onAnnoClick?: (id: number, rect: ViewRect) => void
   ctl?: RefObject<ReadViewHandle | null>
   onProgress: (pos: number, percent: number) => void
 }
@@ -68,6 +78,23 @@ figure { margin: 1em 0; }
 table { max-width: 100%; border-collapse: collapse; }
 pre { white-space: pre-wrap; word-break: break-word; }
 a { text-decoration-color: currentColor; }
+/* 搜索命中：样式必须写在这里——iframe 有独立文档，外面的 Reader.less 管不到它。
+   必须带 !important：主题样式里的 body * 规则会把所有底色清成 transparent（那是为了压掉
+   书里写死的底色），不加 !important 这里的高亮会被一起抹掉，
+   表现就是「DOM 里明明标了，画面上看不见」。 */
+mark.reader-hit {
+  background: rgba(232, 178, 74, 0.5) !important;
+  color: inherit !important;
+  padding: 0;
+  border-radius: 2px;
+}
+/* 划线批注：底色比搜索命中淡一点，两者叠在一起时还能看出下面还有一条线。
+   同样必须 !important，理由同上。 */
+mark.reader-anno { color: inherit !important; padding: 0; border-radius: 2px; }
+mark.reader-anno-amber { background: rgba(232, 178, 74, 0.44) !important; }
+mark.reader-anno-sage { background: rgba(126, 176, 132, 0.42) !important; }
+mark.reader-anno-sky { background: rgba(122, 162, 212, 0.42) !important; }
+mark.reader-anno.on { outline: 1px solid rgba(44, 42, 38, 0.45); }
 `
 
 function themeCss(ink: string, fontSize: number, lineHeight: number, night: boolean): string {
@@ -97,6 +124,8 @@ const FORWARD_KEYS = new Set([
   'Escape',
   't',
   'T',
+  'b',
+  'B',
   '+',
   '=',
   '-',
@@ -105,6 +134,163 @@ const FORWARD_KEYS = new Set([
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
+}
+
+/* ------------------------------------------------------------------ *
+ * 搜索高亮：直接改 iframe 里的 DOM
+ *
+ * iframe 是 sandbox="allow-same-origin"，父窗口拿得到 contentDocument，
+ * 所以不必让主进程在 HTML 里预埋 <mark>——那样每换一个关键词都要重新解压整节。
+ * ------------------------------------------------------------------ */
+
+/** 清掉上一轮的高亮：把 mark 的子节点提回父级再删掉它，比记住原始 HTML 便宜得多 */
+function clearMarks(doc: Document): void {
+  for (const m of Array.from(doc.querySelectorAll('mark.reader-hit'))) {
+    const parent = m.parentNode
+    if (!parent) continue
+    while (m.firstChild) parent.insertBefore(m.firstChild, m)
+    parent.removeChild(m)
+    parent.normalize()
+  }
+}
+
+/**
+ * 把命中词包成 <mark>，返回标了几处。
+ * 只在单个文本节点内匹配：跨节点的词（<em>敦</em>煌 这种排法）标不到，
+ * 但落位用的是字符比例 + 高亮自身位置，标不全也只是高亮少一处。
+ */
+function markMatches(doc: Document, query: string): number {
+  const q = query.toLowerCase()
+  if (!q || !doc.body) return 0
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  while (walker.nextNode()) {
+    const n = walker.currentNode as Text
+    const v = n.nodeValue ?? ''
+    if (v && v.toLowerCase().includes(q)) nodes.push(n)
+  }
+  let count = 0
+  for (const node of nodes) {
+    const hay = (node.nodeValue ?? '').toLowerCase()
+    const spans: Array<[number, number]> = []
+    let from = 0
+    for (;;) {
+      const at = hay.indexOf(q, from)
+      if (at < 0) break
+      spans.push([at, at + q.length])
+      from = at + q.length
+      // 一节里同一个词几十次是常态，标太多既慢也没意义
+      if (spans.length >= 40) break
+    }
+    // 从后往前包：先包后面的，前面那些下标才不会被插入的节点挤偏
+    for (let k = spans.length - 1; k >= 0; k--) {
+      const [s, e] = spans[k]
+      const range = doc.createRange()
+      range.setStart(node, s)
+      range.setEnd(node, e)
+      const el = doc.createElement('mark')
+      el.className = 'reader-hit'
+      try {
+        range.surroundContents(el)
+        count++
+      } catch {
+        /* 选区跨了元素边界（极少见），跳过这一处 */
+      }
+    }
+  }
+  return count
+}
+
+/* ------------------------------------------------------------------ *
+ * 划线批注：同样直接改 iframe 的 DOM
+ *
+ * 坐标是「这一节所有文本节点按文档顺序拼接」后的字符区间。
+ * 拼接结果在插 <mark>、拆文本节点、normalize() 之后都不会变，所以跨会话稳定；
+ * 反过来，如果按「第几个文本节点 + 节点内偏移」存，插一条高亮就会把后面全推偏。
+ * ------------------------------------------------------------------ */
+
+/** 去掉上一轮的划线（只去自己的，别动搜索命中的 <mark>） */
+function clearAnnoMarks(doc: Document): void {
+  for (const m of Array.from(doc.querySelectorAll('mark.reader-anno'))) {
+    const parent = m.parentNode
+    if (!parent) continue
+    while (m.firstChild) parent.insertBefore(m.firstChild, m)
+    parent.removeChild(m)
+    parent.normalize()
+  }
+}
+
+/**
+ * 把这一节的划线包成 <mark>。
+ * 从后往前包：surroundContents 会把文本节点拆成三截，先处理靠后的区间，
+ * 前面那些区间的节点引用与偏移量才不会被拆出来的新节点挤偏。
+ */
+function applyAnnoMarks(doc: Document, spans: AnnoSpan[], activeId: number | null): void {
+  clearAnnoMarks(doc)
+  if (spans.length === 0 || !doc.body) return
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text)
+  if (nodes.length === 0) return
+
+  const starts: number[] = []
+  let acc = 0
+  for (const n of nodes) {
+    starts.push(acc)
+    acc += (n.nodeValue ?? '').length
+  }
+
+  interface Piece {
+    node: Text
+    s: number
+    e: number
+    anno: AnnoSpan
+    /** 绝对起点，用来倒序处理 */
+    order: number
+  }
+  const pieces: Piece[] = []
+  for (const sp of spans) {
+    for (let i = 0; i < nodes.length; i++) {
+      const len = (nodes[i].nodeValue ?? '').length
+      if (len === 0) continue
+      const s = Math.max(sp.start, starts[i])
+      const e = Math.min(sp.end, starts[i] + len)
+      if (e <= s) continue
+      pieces.push({ node: nodes[i], s: s - starts[i], e: e - starts[i], anno: sp, order: s })
+    }
+  }
+  pieces.sort((a, b) => b.order - a.order)
+
+  for (const p of pieces) {
+    const range = doc.createRange()
+    range.setStart(p.node, p.s)
+    range.setEnd(p.node, p.e)
+    const el = doc.createElement('mark')
+    el.className = `reader-anno reader-anno-${p.anno.color}${activeId === p.anno.id ? ' on' : ''}`
+    el.setAttribute('data-anno', String(p.anno.id))
+    try {
+      range.surroundContents(el)
+    } catch {
+      /* 选区跨了元素边界（极少见），跳过这一片 */
+    }
+  }
+}
+
+/**
+ * 选区端点到 body 开头的「拼接串长度」。
+ * 用 cloneContents().textContent 的数字符，等于「这段范围里所有文本节点的字符数之和」，
+ * 跟上面的拼接口径完全一致，也不用自己去遍历节点数偏移。
+ */
+function prefixLength(doc: Document, node: Node, offset: number): number {
+  if (!doc.body) return -1
+  try {
+    const r = doc.createRange()
+    r.setStart(doc.body, 0)
+    r.setEnd(node, offset)
+    return r.cloneContents().textContent?.length ?? 0
+  } catch {
+    return -1
+  }
 }
 
 /** 一节在滚动容器里的占位：content 为 null 表示还没取回来 */
@@ -132,8 +318,23 @@ interface Slot {
  * allow-scripts 兜底），保留 same-origin 是为了能量高度。
  */
 function EpubView(props: Props) {
-  const { bookId, total, weights, fontSize, lineHeight, maxWidth, theme, initialPos, ctl, onProgress } =
-    props
+  const {
+    bookId,
+    total,
+    weights,
+    fontSize,
+    lineHeight,
+    maxWidth,
+    theme,
+    initialPos,
+    mark,
+    annos,
+    activeAnnoId,
+    onPick,
+    onAnnoClick,
+    ctl,
+    onProgress,
+  } = props
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
@@ -156,6 +357,13 @@ function EpubView(props: Props) {
   /** 落位连续失败的次数（目标节迟迟量不到高度时用来放弃） */
   const attempts = useRef(0)
   /**
+   * 这一轮落位要精确停在某条划线上（抽屉里点过来时设）。
+   * 光按「节 + 节内比例」只能落到节首，划线在这一节靠后时还在屏幕外。
+   */
+  const targetAnno = useRef<number | null>(null)
+  /** 划线还没画出来的重试次数：iframe 刚挂上时要等它 load + 打标 */
+  const annoAttempts = useRef(0)
+  /**
    * 换窗口前的锚点：找一个新老窗口都有的节，记下它在视口里的偏移。
    * DOM 更新后（绘制前）按它把 scrollTop 补回来。
    */
@@ -165,6 +373,18 @@ function EpubView(props: Props) {
   const lastReport = useRef(0)
   const reportTimer = useRef(0)
   const targetTimer = useRef(0)
+  /** 当前搜索命中：放 ref 里给 iframe 的 onLoad / 落位用，避免回调每次重建 */
+  const markRef = useRef<{ idx: number; query: string; ordinal: number } | null>(null)
+  markRef.current = mark ?? null
+  /** 划线列表与当前编辑对象：iframe 的监听器只挂一次，靠 ref 取最新值 */
+  const annoRef = useRef<Annotation[]>(annos ?? [])
+  annoRef.current = annos ?? []
+  const activeAnnoRef = useRef<number | null>(activeAnnoId ?? null)
+  activeAnnoRef.current = activeAnnoId ?? null
+  const pickRef = useRef<Props['onPick']>(onPick)
+  pickRef.current = onPick
+  const annoClickRef = useRef<Props['onAnnoClick']>(onAnnoClick)
+  annoClickRef.current = onAnnoClick
 
   const [slots, setSlots] = useState<Slot[]>([])
   /** slots 的 ref 镜像：滚动回调里要用最新值，又不能让 state 变化把回调全部重建 */
@@ -327,6 +547,72 @@ function EpubView(props: Props) {
   }, [total])
 
   /**
+   * 给某一节重新上装饰：搜索命中 + 划线。
+   * 顺序是先搜索后划线——划线的 <mark> 会拆文本节点，反过来的话词匹配窗口会被拆碎、漏标。
+   */
+  const applyDecoration = useCallback((idx: number) => {
+    const el = secEls.current.get(idx)
+    const frame = el?.querySelector('iframe') as HTMLIFrameElement | null
+    const doc = frame?.contentDocument
+    if (!doc || !doc.body) return
+    clearMarks(doc)
+    const m = markRef.current
+    if (m && m.idx === idx && m.query) markMatches(doc, m.query)
+    applyAnnoMarks(doc, epubSpans(annoRef.current, idx), activeAnnoRef.current)
+  }, [])
+
+  // 命中 / 划线 / 编辑对象变了：所有挂着的节都重上一遍装饰
+  useEffect(() => {
+    for (const s of slotsRef.current) applyDecoration(s.idx)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mark, annos, activeAnnoId, applyDecoration])
+
+  /**
+   * 滚到这一节里的第 ordinal 处高亮；没有高亮就返回 false，交给按比例的老路子。
+   * iframe 自己不可滚（overflow:hidden），所以 mark 的 rect 顶端就是它在文档里的偏移。
+   */
+  const scrollToMark = useCallback((idx: number): boolean => {
+    const m = markRef.current
+    if (!m || m.idx !== idx) return false
+    const c = scrollRef.current
+    const el = secEls.current.get(idx)
+    const frame = el?.querySelector('iframe') as HTMLIFrameElement | null
+    const doc = frame?.contentDocument
+    if (!c || !el || !doc) return false
+    const marks = doc.querySelectorAll<HTMLElement>('mark.reader-hit')
+    if (marks.length === 0) return false
+    const targetEl = marks[Math.min(marks.length - 1, Math.max(0, m.ordinal))]
+    if (!targetEl) return false
+    const cTop = c.getBoundingClientRect().top
+    const secTop = el.getBoundingClientRect().top - cTop + c.scrollTop
+    // 命中放在视口上方 96px：既不贴着顶栏，也能看到命中点前后的上下文
+    const want = Math.max(0, secTop + targetEl.getBoundingClientRect().top - 96)
+    c.scrollTop = want
+    // 与 scrollToSection 同理：下面的内容还没量到高度时浏览器会夹住 scrollTop
+    return want <= c.scrollHeight - c.clientHeight + 4
+  }, [])
+
+  /**
+   * 滚到这一节里的某条划线；没画出来就返回 false，交给上层接着等。
+   * 跟 scrollToMark 同理：iframe 自己不可滚，mark 的 rect 顶端就是它在文档里的偏移。
+   */
+  const scrollToAnnoMark = useCallback((idx: number, id: number): boolean => {
+    const c = scrollRef.current
+    const el = secEls.current.get(idx)
+    const frame = el?.querySelector('iframe') as HTMLIFrameElement | null
+    const doc = frame?.contentDocument
+    if (!c || !el || !doc) return false
+    const mark = doc.querySelector<HTMLElement>(`mark.reader-anno[data-anno="${id}"]`)
+    if (!mark) return false
+    const cTop = c.getBoundingClientRect().top
+    const secTop = el.getBoundingClientRect().top - cTop + c.scrollTop
+    // 划线放在视口上方 96px：与搜索命中同一套落位习惯
+    const want = Math.max(0, secTop + mark.getBoundingClientRect().top - 96)
+    c.scrollTop = want
+    return want <= c.scrollHeight - c.clientHeight + 4
+  }, [])
+
+  /**
    * 视口顶部落在哪里：返回命中节与节内比例。
    *
    * 三种情况都要照顾到，少一种就会在边界上算错位置：
@@ -395,7 +681,31 @@ function EpubView(props: Props) {
   const applyTarget = useCallback(() => {
     const t = target.current
     if (!t) return
-    if (!scrollToSection(t.idx, t.ratio)) {
+    // 划线优先：从抽屉点过来时，落在「节首」和落在「那一句」差得可能是大半屏
+    const annoId = targetAnno.current
+    if (annoId !== null) {
+      if (scrollToAnnoMark(t.idx, annoId)) {
+        targetAnno.current = null
+        annoAttempts.current = 0
+        attempts.current = 0
+        target.current = null
+        reportRef.current()
+        return
+      }
+      // 节挂上了但划线还没打上（iframe 还在 load / 内容还没量到高度）：
+      // 先按节落位让人看到内容，再等下一轮精修；等太久就放弃精修，别一直卡在落位态
+      if (++annoAttempts.current > 8) {
+        targetAnno.current = null
+        annoAttempts.current = 0
+      } else {
+        scrollToSection(t.idx, t.ratio)
+        scheduleTarget(120)
+        return
+      }
+    }
+    // 搜索命中优先直接滚到那一处高亮：按节内比例估出来的位置可能差好几段
+    const landed = scrollToMark(t.idx) || scrollToSection(t.idx, t.ratio)
+    if (!landed) {
       // 目标节还没挂上、或者 iframe 还没量到高度：等下一次回调再来。
       // 但要有个头：连续等不到就丢掉目标，否则滚动会一直卡在「正在落位」的状态里（onScroll 会被跳过）。
       if (++attempts.current > 20) {
@@ -416,7 +726,7 @@ function EpubView(props: Props) {
       const c = scrollRef.current
       if (c) c.scrollBy({ top: dir * (c.clientHeight - 72) })
     }
-  }, [scrollToSection, scheduleTarget])
+  }, [scrollToAnnoMark, scrollToMark, scrollToSection, scheduleTarget])
   applyRef.current = applyTarget
 
   /* ---------------- 滚动 ---------------- */
@@ -544,6 +854,20 @@ function EpubView(props: Props) {
         // 键盘：焦点一旦落进 iframe，父窗口的快捷键就全失灵了，转发一份回去
         doc.addEventListener('keydown', (e: Event) => {
           const ke = e as KeyboardEvent
+          // Ctrl+F 单独放行：焦点点进正文后最常见的就是想搜一下，
+          // 只因为落在 iframe 里就按不动说不过去（其余带修饰键的组合仍留给系统）
+          if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'f' || ke.key === 'F')) {
+            ke.preventDefault()
+            window.dispatchEvent(
+              new KeyboardEvent('keydown', {
+                key: 'f',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+              }),
+            )
+            return
+          }
           if (ke.ctrlKey || ke.metaKey || ke.altKey) return
           if (!FORWARD_KEYS.has(ke.key)) return
           ke.preventDefault()
@@ -556,17 +880,73 @@ function EpubView(props: Props) {
             }),
           )
         })
+
+        /*
+         * 选区：书的内容在 iframe 里，父窗口的 mouseup 收不到，
+         * 只能在这里挂一份，再把「锚点 + 原文 + 视口矩形」送回父窗口。
+         * iframe 内部不滚动（overflow:hidden、高度=内容高），所以内容坐标加 iframe 的
+         * getBoundingClientRect 就是父窗口的视口坐标，气泡定位不用再算滚动量。
+         */
+        doc.addEventListener('mouseup', (e: Event) => {
+          const pick = pickRef.current
+          if (!pick) return
+          const target = e.target as HTMLElement | null
+          const hit = target?.closest?.('mark.reader-anno') as HTMLElement | null
+          const frameRect = frame.getBoundingClientRect()
+          if (hit) {
+            const id = Number(hit.getAttribute('data-anno'))
+            const r = hit.getBoundingClientRect()
+            if (Number.isFinite(id)) {
+              annoClickRef.current?.(id, {
+                x: frameRect.left + r.left,
+                y: frameRect.top + r.top,
+                w: r.width,
+                h: r.height,
+              })
+            }
+            return
+          }
+          const sel = frame.contentWindow?.getSelection()
+          if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+            pick(null)
+            return
+          }
+          const range = sel.getRangeAt(0)
+          // 选区有可能从别的 iframe 拖过来，端点不在本文档就别管
+          if (!doc.contains(range.startContainer) || !doc.contains(range.endContainer)) {
+            pick(null)
+            return
+          }
+          const start = prefixLength(doc, range.startContainer, range.startOffset)
+          const end = prefixLength(doc, range.endContainer, range.endOffset)
+          if (start < 0 || end < 0 || end <= start) {
+            pick(null)
+            return
+          }
+          const full = doc.body?.textContent ?? ''
+          const r = range.getBoundingClientRect()
+          pick([
+            {
+              anchor: encodeAnchor({ k: 'epub', section: idx, start, end }),
+              text: full.slice(start, end),
+              rect: { x: frameRect.left + r.left, y: frameRect.top + r.top, w: r.width, h: r.height },
+            },
+          ])
+        })
       }
+      // 新挂上的 iframe 要立刻按当前命中打一份高亮，否则跳过来只看到位置没看到标
+      applyDecoration(idx)
       measure(idx)
       // 字体与图片晚一帧才定型，再量一次就够（内联的是 data URL，本地解码）
       requestAnimationFrame(() => {
+        applyDecoration(idx)
         measure(idx)
         // 新节量到高度了：上一轮因为「还没量齐」而跳过的窗口收缩，这里补做
         syncWindowRef.current(lastCur.current)
         scheduleTarget()
       })
     },
-    [measure, scheduleTarget],
+    [applyDecoration, measure, scheduleTarget],
   )
 
   /* ---------------- 拼文档 ---------------- */
@@ -619,6 +999,26 @@ function EpubView(props: Props) {
     [syncWindow, scheduleTarget, total],
   )
 
+  /**
+   * 精确落到某条划线上。
+   * 通常紧跟 goTo 调用（窗口已经按节摆好、target 正在等落位）；
+   * 也允许单独调（划线就在眼前这一节），这时自己补一个 target 走同一套落位。
+   */
+  const scrollToAnno = useCallback(
+    (id: number) => {
+      if (!target.current) {
+        const loc = locate()
+        if (!loc) return
+        target.current = { idx: loc.idx, ratio: loc.ratio }
+      }
+      targetAnno.current = id
+      annoAttempts.current = 0
+      attempts.current = 0
+      scheduleTarget(0)
+    },
+    [locate, scheduleTarget],
+  )
+
   const scrollPage = useCallback(
     (dir: 1 | -1) => {
       const c = scrollRef.current
@@ -647,7 +1047,7 @@ function EpubView(props: Props) {
     [scheduleTarget, syncWindow, total],
   )
 
-  useImperativeHandle(ctl, () => ({ goTo, scrollPage }))
+  useImperativeHandle(ctl, () => ({ goTo, scrollPage, scrollToAnno }))
 
   /* ---------------- 输出 ---------------- */
 

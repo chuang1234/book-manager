@@ -1,7 +1,9 @@
 import { getDb } from './index'
 import type { WatchDir } from '../../shared/types'
+import { isThemeMode, type ThemeMode } from '../../shared/theme'
 
 const WATCH_DIRS_KEY = 'watch_dirs'
+const THEME_KEY = 'theme_mode'
 
 function get(key: string): string {
   const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as
@@ -56,4 +58,20 @@ export function toggleWatchDir(dir: string, enabled: boolean): WatchDir[] {
   const dirs = listWatchDirs().map((d) => (d.path === dir ? { ...d, enabled: enabled ? 1 : 0 } : d))
   set(WATCH_DIRS_KEY, JSON.stringify(dirs))
   return listWatchDirs()
+}
+
+/**
+ * 界面主题模式。默认「跟随系统」——单用户桌面工具，用户对系统的深色开关
+ * 本来就有预期，跟着它走最不需要解释。
+ *
+ * 存在库里而不是 localStorage：窗口底色要在**创建前**定下来（否则启动白闪一帧），
+ * 那一刻主进程还读不到渲染层的 localStorage。
+ */
+export function getThemeMode(): ThemeMode {
+  const raw = get(THEME_KEY)
+  return isThemeMode(raw) ? raw : 'system'
+}
+
+export function setThemeMode(mode: ThemeMode): void {
+  set(THEME_KEY, mode)
 }

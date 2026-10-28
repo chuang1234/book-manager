@@ -12,7 +12,15 @@
   display: flex;
   flex-direction: column;
   padding: 16px 10px 12px;
+  /* 滚动挪到 .sidebar-scroll：整栏滚动会把回收站顶出屏幕 */
+  overflow: hidden;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sidebar-brand {
@@ -27,7 +35,7 @@
   height: 28px;
   border-radius: 7px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 600;
   display: flex;
@@ -103,6 +111,56 @@
   padding: 0 8px 6px;
 }
 
+/* 标题本身是「收起/展开」的按钮 */
+.sidebar-section-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  /* 三角用 CSS 画：字符 ▸ 在 11px 字号下小得像一个点，且各字体大小不一 */
+  &::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 4px solid currentColor;
+    border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+    opacity: 0.7;
+    transition: transform 0.12s ease;
+  }
+
+  &.is-open::before {
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-top: 4px solid currentColor;
+    border-bottom: 0;
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+
+  &:hover {
+    color: var(--ink-2);
+  }
+}
+
+/* 收起后只留一行标题，块间距收紧一点，免得空得莫名其妙 */
+.sidebar-section-closed {
+  margin-bottom: 10px;
+
+  .sidebar-section-title {
+    padding-bottom: 0;
+  }
+}
+
 .sidebar-section-count {
   font-size: 10px;
   color: var(--ink-3);
@@ -110,6 +168,8 @@
   border-radius: 8px;
   padding: 0 6px;
   line-height: 16px;
+  margin-left: 5px;
+  letter-spacing: 0;
 }
 
 /* ---------- 侧栏标签导航 ---------- */
@@ -165,10 +225,88 @@
   }
 }
 
+/* 管理模式：整块转红调，点一下就是删（另有确认框兜底，不会一碰就没） */
+.tag-nav-item-manage {
+  color: var(--danger);
+  border-color: rgba(179, 84, 63, 0.35);
+
+  &:hover {
+    color: #fff;
+    background: var(--danger);
+    border-color: var(--danger);
+  }
+}
+
+.tag-nav-del {
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+/* 导入常用标签：虚线框，一眼区分「不是已有标签」 */
+.tag-nav-add {
+  color: var(--ink-3);
+  border-style: dashed;
+  background: transparent;
+
+  &:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: transparent;
+  }
+}
+
+/* 「展开全部 / 收起」：纯文字按钮，别做成 chip——它不是一个标签 */
+.tag-nav-more {
+  margin: 6px 6px 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  color: var(--ink-3);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
+  }
+}
+
 .sidebar-footer {
+  flex: none;
   margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--line);
+}
+
+/* 外观切换：三个独立小按钮，不拼成 view-toggle 那种一体条——
+   侧栏窄，拼起来每格只剩 50px，两三个字贴着边。留 4px 缝更像三个开关 */
+.sidebar-theme {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+
+  button {
+    flex: 1;
+    padding: 5px 0;
+    font-size: 12px;
+    color: var(--ink-2);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+      border-color: var(--accent);
+      color: var(--accent-strong);
+    }
+
+    &.on {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent-strong);
+      font-weight: 500;
+    }
+  }
 }
 
 /* ---------- 主区 ---------- */

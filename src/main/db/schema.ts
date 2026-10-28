@@ -140,6 +140,54 @@ CREATE TABLE IF NOT EXISTS reading_position (
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- 阅读书签：读到哪里想留个记号（与「上次读到哪」无关，一本可以有很多条）
+CREATE TABLE IF NOT EXISTS bookmark (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id INTEGER NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+  -- 与 reading_position.locator 同一套口径（offset / page / section）
+  locator TEXT NOT NULL DEFAULT '',
+  -- 0~1，列表排序与「位置 42%」展示用
+  percent REAL NOT NULL DEFAULT 0,
+  -- 加书签时所在的章节名，方便在一堆百分比里认出是哪一条
+  chapter TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  create_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_bookmark_book ON bookmark(book_id);
+
+-- 阅读时长：按「书 + 本地日期」聚合成一行，每分钟由渲染层增量上报。
+-- 不做会话明细表——个人使用只关心「这本书读了多久 / 最近读没读」，
+-- 明细会有几万行，收益却只是能画出更细的曲线。
+CREATE TABLE IF NOT EXISTS reading_session (
+  book_id INTEGER NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+  -- YYYY-MM-DD（本地时区，SQLite date('now','localtime') 生成）
+  day TEXT NOT NULL,
+  seconds INTEGER NOT NULL DEFAULT 0,
+  update_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  PRIMARY KEY (book_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_reading_session_day ON reading_session(day);
+
+-- 划线批注：用户在正文里划的一段 + 可能写的一段话。
+-- anchor 存的是「拼接串上的字符区间」，不是原文——原文会随排版变（换字号后
+-- 段落里的换行位置不同），而拼接串只取决于文件内容，跨会话稳定。
+CREATE TABLE IF NOT EXISTS annotation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id INTEGER NOT NULL REFERENCES book(id) ON DELETE CASCADE,
+  -- JSON：{"k":"txt","start":123,"end":141} / {"k":"pdf","page":12,...} / {"k":"epub","section":7,...}
+  anchor TEXT NOT NULL DEFAULT '',
+  -- 划中的原文（折叠空白后截断），列表展示用
+  text TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  -- amber / sage / sky
+  color TEXT NOT NULL DEFAULT 'amber',
+  percent REAL NOT NULL DEFAULT 0,
+  chapter TEXT NOT NULL DEFAULT '',
+  create_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  update_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_annotation_book ON annotation(book_id);
+
 -- 任何更新自动刷新 update_time（SQLite 默认不递归触发触发器，安全）
 CREATE TRIGGER IF NOT EXISTS trg_book_touch
 AFTER UPDATE ON book

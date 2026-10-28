@@ -480,20 +480,7 @@ export default function BookForm({ book, onClose, onSaved }: Props) {
               </div>
             </div>
 
-            <div className="form-row">
-              <span className="form-label">评分</span>
-              <div className="star-input">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    className={form.rating >= n ? 'star star-on' : 'star'}
-                    onClick={() => set('rating', form.rating === n ? 0 : n)}
-                  >
-                    ★
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* 评分已移到详情页的星级交互（RatingStars），表单不再重复；提交时原样带回，不会丢值 */}
 
             <label className="form-row">
               <span className="form-label">已读页数</span>

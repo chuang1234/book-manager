@@ -1,14 +1,17 @@
 /**
  * 渲染层实测：用系统 Edge（playwright-core）跑 out/renderer 的构建产物，
- * 主进程接口全部 mock，但 EPUB 的解析仍然走真实的 inspectEpub / readEpubSection。
+ * 主进程接口全部 mock，但分节格式的解析仍然走真实的 inspect / readSection。
  *
  * 验的是「多节连续滚动、量高度、滚轮、键盘、进度、目录跳转、退出保存、重开恢复」
  * 这几件在纯 Node 单测里摸不到的事。
  *
+ * 默认验 EPUB；设 READER_FORMAT=mobi 或 azw3 就用同一套断言验 MOBI（解析器换成 mobi）。
+ *
  * 前置：npm run build（产物在 out/renderer）、本机装了 Edge。
  * playwright-core 不在项目依赖里，用托管 Node 工作区里那份：
  *   NODE_PATH=~/.workbuddy/binaries/node/workspace/node_modules node scripts/verify-epub.js "D:/书.epub"
- * 首次运行会自动用 esbuild 把 src 里的 EPUB 解析器打成一个临时 cjs（node_modules/.tmp）。
+ *   NODE_PATH=... READER_FORMAT=mobi node scripts/verify-epub.js
+ * 首次运行会自动用 esbuild 把 src 里的解析器打成一个临时 cjs（node_modules/.tmp）。
  */
 const http = require('node:http')
 const fs = require('node:fs')
@@ -17,16 +20,34 @@ const { execSync } = require('node:child_process')
 const { chromium } = require('playwright-core')
 
 const ROOT = path.join(__dirname, '..')
-const BUNDLE = path.join(ROOT, 'node_modules', '.tmp', 'epub-api.cjs')
+// 分节格式共用同一套渲染层，解析器按格式换一份：epub → epub-api，mobi/azw3 → mobi-api
+const FORMAT = (process.env.READER_FORMAT || 'epub').toLowerCase()
+const IS_MOBI = FORMAT === 'mobi' || FORMAT === 'azw3'
+const API_NAME = IS_MOBI ? 'mobi-api' : 'epub-api'
+const BUNDLE = path.join(ROOT, 'node_modules', '.tmp', `${API_NAME}.cjs`)
 if (!fs.existsSync(BUNDLE)) {
   execSync(
-    `npx esbuild scripts/epub-api.ts --bundle --platform=node --format=cjs --external:better-sqlite3 --outfile="${BUNDLE}"`,
+    `npx esbuild scripts/${API_NAME}.ts --bundle --platform=node --format=cjs --external:better-sqlite3 --outfile="${BUNDLE}"`,
     { cwd: ROOT, stdio: 'inherit' },
   )
 }
-const epubApi = require(BUNDLE)
+const readerApi = require(BUNDLE)
+// 三件套统一成同名接口，下面的用例不用关心是哪种书
+const inspectMeta = () => (IS_MOBI ? readerApi.inspectMeta(FIXTURE) : readerApi.inspectEpub(FIXTURE))
+const readSection = (i) => (IS_MOBI ? readerApi.readSection(FIXTURE, i) : readerApi.readEpubSection(FIXTURE, i))
+const searchInBook = (q) => (IS_MOBI ? readerApi.searchMobi(FIXTURE, q) : readerApi.searchEpub(FIXTURE, q))
 
-const EPUB = process.argv[2]
+const FIXTURE = process.argv[2] || path.join(ROOT, 'node_modules', '.tmp', IS_MOBI ? 'fixture.mobi' : 'fixture.epub')
+// 没传样本就用造出来的那本：以前必须先找到一本真书才能跑回归，结果就是没人跑
+if (!fs.existsSync(FIXTURE)) {
+  execSync(
+    `node "${path.join(__dirname, IS_MOBI ? 'make-mobi-fixture.js' : 'make-epub-fixture.js')}" "${FIXTURE}"`,
+    { cwd: ROOT, stdio: 'inherit' },
+  )
+}
+const EPUB = FIXTURE
+/** 截图按格式分开命名：mobi 跑不要覆盖 epub 的那几张 */
+const SHOT = (name) => path.join(ROOT, `shot-${IS_MOBI ? FORMAT : 'epub'}-${name}.png`)
 const DIST = path.join(ROOT, 'out', 'renderer')
 const PORT = 4620
 
@@ -78,7 +99,7 @@ function check(name, ok, detail) {
 }
 
 async function main() {
-  const meta = await epubApi.inspectEpub(EPUB)
+  const meta = await inspectMeta()
   console.log(`样本：${path.basename(EPUB)}  小节 ${meta.total}  目录 ${meta.chapters.length}`)
 
   const server = http.createServer(async (req, res) => {
@@ -95,9 +116,16 @@ async function main() {
       }
       if (url.pathname === '/__section') {
         const i = Number(url.searchParams.get('i')) || 1
-        const sec = await epubApi.readEpubSection(EPUB, i)
+        const sec = await readSection(i)
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify(sec))
+        return
+      }
+      if (url.pathname === '/__search') {
+        const q = url.searchParams.get('q') || ''
+        const out = await searchInBook(q)
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(out))
         return
       }
       const rel = url.pathname === '/' ? '/index.html' : url.pathname
@@ -131,8 +159,9 @@ async function main() {
   page.on('requestfailed', (r) => missing.push(`failed ${r.url()} ${r.failure()?.errorText ?? ''}`))
 
   await page.addInitScript(
-    ({ book }) => {
+    ({ book, format }) => {
       const saved = []
+      const annos = []
       const ok = (v) => () => Promise.resolve(v)
       const handlers = {
         'category.tree': ok([
@@ -171,7 +200,7 @@ async function main() {
               const last = saved[saved.length - 1]
               return {
                 book,
-                format: 'epub',
+                format,
                 text: '',
                 bytes: 1024,
                 chapters: m.chapters,
@@ -179,7 +208,7 @@ async function main() {
                 position: last
                   ? {
                       book_id: book.id,
-                      format: 'epub',
+                      format,
                       locator: last.locator,
                       percent: last.percent,
                       updated_at: '',
@@ -194,6 +223,56 @@ async function main() {
           return Promise.resolve({ book_id: b, percent: input.percent, locator: input.locator })
         },
         'reader.section': (_b, i) => fetch('/__section?i=' + i).then((r) => r.json()),
+        'reader.search': (_b, q) => fetch('/__search?q=' + encodeURIComponent(q)).then((r) => r.json()),
+        'reader.setActive': (title) => {
+          window.__active = title
+          return Promise.resolve()
+        },
+        // 划线批注：行为与主进程一致（同一锚点只更新、列表按 percent 升序）
+        // 必须回一个新数组：同一个引用会让 React 认为状态没变、跳过重渲染，
+        // 划线就永远等不到那次重绘（真 IPC 每次都是新数组，天然没这个问题）
+        'annotation.list': () => Promise.resolve(annos.slice()),
+        'annotation.add': (_b, input) => {
+          const exist = annos.find((a) => a.anchor === input.anchor)
+          if (exist) {
+            exist.color = input.color || exist.color
+            if (input.note) exist.note = input.note
+            return Promise.resolve(exist)
+          }
+          const a = {
+            id: annos.length + 1,
+            book_id: book.id,
+            anchor: input.anchor,
+            text: input.text || '',
+            note: input.note || '',
+            color: input.color || 'amber',
+            percent: input.percent || 0,
+            chapter: input.chapter || '',
+            create_time: '2026-10-27 12:00:00',
+            update_time: '2026-10-27 12:00:00',
+          }
+          annos.push(a)
+          window.__annos = annos
+          return Promise.resolve(a)
+        },
+        'annotation.update': (_b, id, patch) => {
+          const a = annos.find((x) => x.id === id)
+          if (a && patch.note !== undefined) a.note = patch.note
+          if (a && patch.color) a.color = patch.color
+          return Promise.resolve(a || null)
+        },
+        'annotation.remove': (_b, id) => {
+          const i = annos.findIndex((x) => x.id === id)
+          if (i >= 0) annos.splice(i, 1)
+          return Promise.resolve()
+        },
+        'annotation.count': () => Promise.resolve(annos.length),
+        'reader.onBackToShelf': (cb) => {
+          window.__emitBack = () => cb()
+          return () => {
+            window.__emitBack = null
+          }
+        },
       }
       const ns = (name) =>
         new Proxy(
@@ -233,7 +312,7 @@ async function main() {
         },
       )
     },
-    { book: BOOK },
+    { book: BOOK, format: FORMAT },
   )
 
   /* ---------- 页面内取值工具 ---------- */
@@ -318,11 +397,12 @@ async function main() {
 
   await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(400)
-  await page.getByText('书架', { exact: true }).first().click()
+  // 走侧栏「全部图书」进书架（顶栏那个「书架」是视图切换，在首页点不会有反应）
+  await page.click('.nav-item:has-text("全部图书")')
   await page.waitForSelector('.cover-card', { timeout: 8000 })
   await page.click('.cover-card')
-  await page.waitForSelector('text=阅读', { timeout: 8000 })
-  await page.click('button:has-text("阅读")')
+  await page.waitForSelector('.app-content button:has-text("阅读")', { timeout: 8000 })
+  await page.click('.app-content button:has-text("阅读")')
   await page.waitForSelector('iframe.reader-epub-frame', { timeout: 15000 })
   await page.waitForTimeout(1200)
 
@@ -438,6 +518,325 @@ async function main() {
     `${afterToc.subtitle.trim()} vs ${String(tocSecond ?? '').trim()}`,
   )
 
+  /* ---------- 文内搜索：高亮要真的打进 iframe ---------- */
+
+  // 命中位置只能靠父窗口去改 iframe 里的 DOM（sandbox 有 allow-same-origin），
+  // 这段逻辑在纯 Node 里测不到，只能在真浏览器里看一眼
+  const searchProbe = () =>
+    page.evaluate(() => {
+      const c = document.querySelector('.reader-scroll')
+      const vTop = c ? c.getBoundingClientRect().top : 0
+      let cur = null
+      for (const el of document.querySelectorAll('.reader-epub-sec')) {
+        const r = el.getBoundingClientRect()
+        if (r.top <= vTop + 2 && r.bottom > vTop + 2) cur = Number(el.dataset.idx)
+      }
+      const marks = []
+      for (const f of document.querySelectorAll('.reader-epub-frame')) {
+        const doc = f.contentDocument
+        if (!doc) continue
+        const ms = doc.querySelectorAll('mark.reader-hit')
+        if (ms.length === 0) continue
+        const sec = f.closest('.reader-epub-sec')
+        // top 是相对滚动容器视口的纵向位置：命中必须落在视口里，否则等于只标了没跳
+        const top = Math.round(f.getBoundingClientRect().top - vTop + ms[0].getBoundingClientRect().top)
+        // 底色也要读出来：DOM 里有 <mark> 不等于画面上看得见（主题的 body * 规则会把它抹掉过）
+        const bg = getComputedStyle(ms[0]).backgroundColor
+        marks.push({ idx: Number(sec?.dataset.idx), n: ms.length, text: ms[0].textContent, top, bg })
+      }
+      return {
+        rows: document.querySelectorAll('.reader-search-item').length,
+        meta: document.querySelector('.reader-search-meta')?.textContent ?? '',
+        cur,
+        marks,
+        panel: !!document.querySelector('.reader-search'),
+        reader: !!document.querySelector('.reader-bar'),
+      }
+    })
+
+  await page.keyboard.press('Control+f')
+  await page.waitForSelector('.reader-search')
+  await page.waitForTimeout(250)
+  await page.fill('.reader-search-input', '暗号乙')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(1600)
+  const hitOne = await searchProbe()
+  console.log('  搜唯一暗号：', JSON.stringify(hitOne))
+  check('分节格式搜到唯一命中', hitOne.rows === 1, hitOne.rows)
+  check('跳到命中所在小节（第 7 节）', hitOne.cur === 7, hitOne.cur)
+  check('命中小节里打上了高亮', hitOne.marks.length === 1 && hitOne.marks[0].idx === 7, JSON.stringify(hitOne.marks))
+  check('标出来的正是关键词', hitOne.marks[0]?.text === '暗号乙', hitOne.marks[0]?.text)
+  check(
+    '高亮在画面上真的可见（底色不是透明的）',
+    /^rgba?\(232, 178, 74/.test(hitOne.marks[0]?.bg || ''),
+    hitOne.marks[0]?.bg,
+  )
+  check(
+    '命中落在视口里（不是只改了高亮不滚动）',
+    hitOne.marks[0]?.top >= 0 && hitOne.marks[0]?.top < 700,
+    hitOne.marks[0]?.top,
+  )
+
+  // 同一节里出现三次：列表三条、iframe 里三处高亮
+  await page.fill('.reader-search-input', '暗号甲')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(1600)
+  const hitMany = await searchProbe()
+  console.log('  搜同节多次：', JSON.stringify(hitMany))
+  check('同节内的三处都列出', hitMany.rows === 3, hitMany.rows)
+  check('落在第 2 节', hitMany.cur === 2, hitMany.cur)
+  check('三处都打了高亮', hitMany.marks[0]?.n === 3, JSON.stringify(hitMany.marks))
+  await page.locator('.reader').screenshot({ path: SHOT('search') })
+
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(800)
+  const steppedEpub = await searchProbe()
+  check('回车走到第 2 处', /^2 \//.test(steppedEpub.meta), steppedEpub.meta)
+
+  // 关掉面板：iframe 里的 <mark> 必须被拆回去，不然再读几页还挂着上次的黄色
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(500)
+  const searchClosed = await searchProbe()
+  console.log('  关掉搜索：', JSON.stringify({ panel: searchClosed.panel, marks: searchClosed.marks.length }))
+  check('Esc 关掉搜索面板', !searchClosed.panel)
+  check('iframe 里的高亮被清掉', searchClosed.marks.length === 0, JSON.stringify(searchClosed.marks))
+  check('人还在阅读器里', searchClosed.reader)
+
+  /* ---------- 划线批注：选区在 iframe 里，锚点要跨文档传递 ---------- */
+
+  // 选区发生在 iframe 内部，父窗口收不到 mouseup，只能由挂进 iframe 的监听器
+  // 把「锚点 + 原文 + 视口矩形」送回父窗口——这段只能在真浏览器里验
+  const annoProbe = () =>
+    page.evaluate(() => {
+      const rows = []
+      for (const f of document.querySelectorAll('.reader-epub-frame')) {
+        const doc = f.contentDocument
+        if (!doc) continue
+        const ms = doc.querySelectorAll('mark.reader-anno')
+        if (ms.length === 0) continue
+        rows.push({
+          idx: Number(f.closest('.reader-epub-sec')?.dataset.idx),
+          n: ms.length,
+          text: ms[0].textContent,
+          bg: getComputedStyle(ms[0]).backgroundColor,
+        })
+      }
+      return {
+        marks: rows,
+        annos: (window.__annos || []).length,
+        drawerItems: document.querySelectorAll('.reader-anno-item').length,
+        pop: !!document.querySelector('.reader-anno-pop'),
+      }
+    })
+
+  // 选区在「当前视口那一节的 iframe」里造：父窗口与 iframe 同源，直接在主页面里操作即可
+  const epubSel = await page.evaluate(() => {
+    const vTop = document.querySelector('.reader-scroll').getBoundingClientRect().top
+    let frame = null
+    for (const f of document.querySelectorAll('.reader-epub-frame')) {
+      const r = f.getBoundingClientRect()
+      if (r.bottom > vTop + 40 && r.top < vTop + 240) {
+        frame = f
+        break
+      }
+    }
+    if (!frame) return null
+    const doc = frame.contentDocument
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+    let node = null
+    while (walker.nextNode()) {
+      const v = walker.currentNode.nodeValue || ''
+      if (v.trim().length >= 12) {
+        node = walker.currentNode
+        break
+      }
+    }
+    if (!node) return null
+    const range = doc.createRange()
+    range.setStart(node, 1)
+    range.setEnd(node, 6)
+    const win = frame.contentWindow
+    const sel = win.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+    // 事件要在 iframe 自己的 realm 里造，父窗口 new MouseEvent 派发进去类型对不上
+    node.parentElement.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true }))
+    return { text: range.toString(), idx: Number(frame.closest('.reader-epub-sec')?.dataset.idx) }
+  })
+  await page.waitForTimeout(300)
+  const popAfterSel = await annoProbe()
+  check('iframe 里选中文字也能弹出浮层', !!epubSel && popAfterSel.pop, JSON.stringify({ epubSel, pop: popAfterSel.pop }))
+
+  await page.click('.reader-anno-dot.dot-amber')
+  await page.waitForTimeout(700)
+  const savedAnno = await page.evaluate(() => (window.__annos || [])[0] || null)
+  const epubAnchor = savedAnno ? JSON.parse(savedAnno.anchor) : null
+  console.log('  批注锚点：', JSON.stringify(epubAnchor), '节', epubSel?.idx)
+  check('存下的锚点是分节口径', !!epubAnchor && epubAnchor.k === 'epub', JSON.stringify(epubAnchor))
+  check('锚点落在当前视口那一节', !!epubAnchor && epubAnchor.section === epubSel?.idx, `${epubAnchor?.section} vs ${epubSel?.idx}`)
+  check('锚点区间非空', !!epubAnchor && epubAnchor.end > epubAnchor.start, JSON.stringify(epubAnchor))
+  check('摘录与选中的一致', !!savedAnno && savedAnno.text === epubSel?.text, `${savedAnno?.text} vs ${epubSel?.text}`)
+
+  const afterAnno = await annoProbe()
+  console.log('  划线：', JSON.stringify(afterAnno.marks))
+  check('划线真的打进 iframe 的 DOM', afterAnno.marks.length === 1 && afterAnno.marks[0].n >= 1, JSON.stringify(afterAnno.marks))
+  check(
+    '划线底色在画面上可见（没被主题抹掉）',
+    /^rgba?\(232, 178, 74/.test(afterAnno.marks[0]?.bg || ''),
+    afterAnno.marks[0]?.bg,
+  )
+  check('标出来的正是选中的文字', afterAnno.marks[0]?.text === epubSel?.text, `${afterAnno.marks[0]?.text} vs ${epubSel?.text}`)
+
+  // 把划线滚进视口：截图要能看见「画面上真的黄了一块」，也顺便验一下滚动后标记仍在
+  await page.evaluate(() => {
+    const c = document.querySelector('.reader-scroll')
+    for (const f of document.querySelectorAll('.reader-epub-frame')) {
+      if (!f.contentDocument?.querySelector('mark.reader-anno')) continue
+      const sec = f.closest('.reader-epub-sec')
+      c.scrollTop += sec.getBoundingClientRect().top - c.getBoundingClientRect().top - 120
+      return
+    }
+  })
+  await page.waitForTimeout(700)
+  const afterScroll = await annoProbe()
+  check('滚动换窗口后划线还在', afterScroll.marks.length === 1 && afterScroll.marks[0].n >= 1, JSON.stringify(afterScroll.marks))
+
+  // 抽屉里能看到这条
+  await page.click('.reader-btn:has-text("批注")')
+  await page.waitForTimeout(300)
+  const drawerState = await annoProbe()
+  check('批注抽屉里列出一条', drawerState.drawerItems === 1, drawerState.drawerItems)
+  await page.click('.reader-annos .reader-icon-btn')
+  await page.waitForTimeout(250)
+
+  // 点已有划线进编辑态（同样在 iframe 里派发事件）
+  const clickedMark = await page.evaluate(() => {
+    for (const f of document.querySelectorAll('.reader-epub-frame')) {
+      const doc = f.contentDocument
+      const m = doc?.querySelector('mark.reader-anno')
+      if (!m) continue
+      m.dispatchEvent(new (f.contentWindow).MouseEvent('mouseup', { bubbles: true }))
+      return true
+    }
+    return false
+  })
+  await page.waitForTimeout(350)
+  check('点 iframe 里的划线也能打开浮层', clickedMark && (await page.locator('.reader-anno-pop').count()) === 1)
+  await page.locator('.reader').screenshot({ path: SHOT('anno') })
+  await page.click('.reader-anno-pop-del')
+  await page.waitForTimeout(700)
+  const afterDel = await annoProbe()
+  check('删除后 iframe 里的划线也清掉', afterDel.marks.length === 0, JSON.stringify(afterDel.marks))
+  check('删除后库里也没了', afterDel.annos === 0, afterDel.annos)
+
+  /* ---------- 抽屉跳转：要精确落在划线那一句，而不是节首 ---------- */
+
+  /** 划线在视口里的位置（相对 .reader-scroll 顶部）；还没渲染出来就是 null */
+  const markOnScreen = () =>
+    page.evaluate(() => {
+      const c = document.querySelector('.reader-scroll')
+      const cr = c.getBoundingClientRect()
+      for (const f of document.querySelectorAll('.reader-epub-frame')) {
+        const m = f.contentDocument?.querySelector('mark.reader-anno')
+        if (!m) continue
+        // iframe 自己不滚，内容坐标就是它的视口坐标，只需要平移到外层容器
+        return {
+          top: Math.round(f.getBoundingClientRect().top + m.getBoundingClientRect().top - cr.top),
+          idx: Number(f.closest('.reader-epub-sec')?.dataset.idx),
+        }
+      }
+      return null
+    })
+
+  // 挑当前视口那一节里靠后的一段来划：只有节内偏移够大，
+  // 「跳到节首」和「跳到划线」才分得出来
+  const deepSel = await page.evaluate(() => {
+    const vTop = document.querySelector('.reader-scroll').getBoundingClientRect().top
+    let frame = null
+    for (const f of document.querySelectorAll('.reader-epub-frame')) {
+      const r = f.getBoundingClientRect()
+      if (r.bottom > vTop + 40 && r.top < vTop + 240) {
+        frame = f
+        break
+      }
+    }
+    if (!frame) return null
+    const doc = frame.contentDocument
+    const nodes = []
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+    while (walker.nextNode()) {
+      const v = walker.currentNode.nodeValue || ''
+      if (v.trim().length >= 12) nodes.push(walker.currentNode)
+    }
+    const node = nodes[Math.min(nodes.length - 1, 9)]
+    if (!node) return null
+    const range = doc.createRange()
+    range.setStart(node, 1)
+    range.setEnd(node, 6)
+    const win = frame.contentWindow
+    const sel = win.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+    node.parentElement.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true }))
+    return { text: range.toString(), idx: Number(frame.closest('.reader-epub-sec')?.dataset.idx) }
+  })
+  await page.waitForTimeout(300)
+  await page.click('.reader-anno-dot.dot-sky')
+  await page.waitForTimeout(700)
+
+  const deepPos = await page.evaluate(() => {
+    for (const f of document.querySelectorAll('.reader-epub-frame')) {
+      const m = f.contentDocument?.querySelector('mark.reader-anno')
+      if (!m) continue
+      return {
+        idx: Number(f.closest('.reader-epub-sec')?.dataset.idx),
+        inSec: Math.round(m.getBoundingClientRect().top),
+      }
+    }
+    return null
+  })
+  console.log('  深一点的划线：', JSON.stringify({ deepSel, deepPos }))
+  check('划线在节内偏得够远（能区分节首与正文）', !!deepPos && deepPos.inSec > 250, JSON.stringify(deepPos))
+
+  // 滚到离目标很远的地方：换掉整个 6 节窗口，划线所在的 iframe 会被卸掉
+  await page.evaluate(() => {
+    const c = document.querySelector('.reader-scroll')
+    const ratio = c.scrollTop / Math.max(1, c.scrollHeight)
+    c.scrollTop = ratio > 0.5 ? 0 : c.scrollHeight * 0.75
+  })
+  await page.waitForTimeout(900)
+  const awayEpub = await markOnScreen()
+  check('先把视口滚走（划线已离开屏幕）', !awayEpub || awayEpub.top < 0 || awayEpub.top > 800, JSON.stringify(awayEpub))
+
+  await page.click('.reader-btn:has-text("批注")')
+  await page.waitForTimeout(300)
+  check('抽屉里列出这条', (await page.locator('.reader-anno-item').count()) === 1)
+  await page.click('.reader-anno-item-main')
+  await page.waitForTimeout(1400)
+  const epLand = await markOnScreen()
+  console.log('  跳转落位：', JSON.stringify({ epLand, inSec: deepPos?.inSec }))
+  check('跳转回到划线的节', !!epLand && epLand.idx === deepSel?.idx, JSON.stringify({ epLand, idx: deepSel?.idx }))
+  check(
+    '跳转落在划线本身（视口上方 96px 附近），不是只落到节首',
+    !!epLand && epLand.top >= 60 && epLand.top <= 170,
+    JSON.stringify({ epLand, inSec: deepPos?.inSec }),
+  )
+  await page.locator('.reader').screenshot({ path: SHOT('anno-jump') })
+
+  // 收拾掉这条，后面的字号 / 退出测试保持干净
+  await page.evaluate(() => {
+    for (const f of document.querySelectorAll('.reader-epub-frame')) {
+      const m = f.contentDocument?.querySelector('mark.reader-anno')
+      if (!m) continue
+      m.dispatchEvent(new (f.contentWindow).MouseEvent('mouseup', { bubbles: true }))
+      return
+    }
+  })
+  await page.waitForTimeout(300)
+  await page.click('.reader-anno-pop-del')
+  await page.waitForTimeout(600)
+  check('跳转用的那条也能删掉', (await page.evaluate(() => (window.__annos || []).length)) === 0)
+
   /* ---------- 改字号：位置要保持 ---------- */
 
   const beforeFont = await probe()
@@ -486,7 +885,7 @@ async function main() {
   check('中途退出存下带小数的 section 定位', !!midSaved && /"v":\d+\.\d+/.test(midSaved.locator), midSaved && midSaved.locator)
 
   await page.waitForTimeout(300)
-  await page.click('button:has-text("阅读")')
+  await page.click('.app-content button:has-text("阅读")')
   await page.waitForSelector('iframe.reader-epub-frame', { timeout: 15000 })
   await page.waitForTimeout(1400)
   const midReopened = await probe()
@@ -498,7 +897,7 @@ async function main() {
   )
   check('中途重开还在同一章', midReopened.subtitle.trim() === midPercent.subtitle.trim(), midReopened.subtitle)
 
-  await page.screenshot({ path: path.join(ROOT, 'shot-epub.png') })
+  await page.screenshot({ path: SHOT('reader') })
 
   /* ---------- 一路滚到书末 ---------- */
 
@@ -561,7 +960,7 @@ async function main() {
   check('读到末尾存的是 total+1', !!last && /"v":\d+\.?\d*/.test(last.locator), last && last.locator)
 
   await page.waitForTimeout(400)
-  await page.click('button:has-text("阅读")')
+  await page.click('.app-content button:has-text("阅读")')
   await page.waitForSelector('iframe.reader-epub-frame', { timeout: 15000 })
   await page.waitForTimeout(1200)
   const reopened = await probe()

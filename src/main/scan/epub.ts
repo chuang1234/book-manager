@@ -77,6 +77,8 @@ export function readZipEntries(zipPath: string, wantNames: string[]): Promise<Ma
   const want = new Set(wantNames.filter(Boolean))
   const out = new Map<string, Buffer>()
   if (want.size === 0) return Promise.resolve(out)
+  // 大小写兜底：书里写 Images/x.png、包里是 images/x.png 的情况很常见（macOS / Windows 产出）
+  const wantLower = new Map([...want].map((n) => [n.toLowerCase(), n]))
 
   return new Promise((resolve, reject) => {
     openZip(zipPath)
@@ -88,7 +90,11 @@ export function readZipEntries(zipPath: string, wantNames: string[]): Promise<Ma
           } catch {
             /* 非编码名原样用 */
           }
-          const key = want.has(decoded) ? decoded : want.has(entry.fileName) ? entry.fileName : ''
+          const key =
+            (want.has(decoded) ? decoded : want.has(entry.fileName) ? entry.fileName : '') ||
+            wantLower.get(decoded.toLowerCase()) ||
+            wantLower.get(entry.fileName.toLowerCase()) ||
+            ''
           if (!key) {
             zip.readEntry()
             return
@@ -116,7 +122,8 @@ export function readZipEntries(zipPath: string, wantNames: string[]): Promise<Ma
   })
 }
 
-/** 列出 zip 全部条目名（解码后） */export function listZipEntries(zipPath: string): Promise<string[]> {
+/** 列出 zip 全部条目名（解码后） */
+export function listZipEntries(zipPath: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
     openZip(zipPath)
       .then((zip) => {

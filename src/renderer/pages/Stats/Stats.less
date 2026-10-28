@@ -1,0 +1,579 @@
+/* 阅读统计：一页纵向叙事，不做仪表盘式的密集卡片墙。
+   所有颜色都取 CSS 变量——深色主题换的是变量，这里一行不用改。 */
+
+.page-stats {
+  max-width: 1080px;
+}
+
+/* ---------- 页头 ---------- */
+
+.stats-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.stats-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.stats-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-range {
+  display: flex;
+  gap: 4px;
+  flex: none;
+
+  button {
+    height: 28px;
+    padding: 0 11px;
+    font-size: 12px;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+      background: var(--surface-2);
+      color: var(--ink);
+    }
+
+    &.on {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+  }
+}
+
+/* ---------- 核心数字 ---------- */
+
+.stats-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.stats-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 15px 16px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.stats-kpi-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+
+  em {
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 400;
+    color: var(--ink-2);
+    margin-left: 3px;
+  }
+}
+
+.stats-kpi-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.stats-kpi-foot {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.stats-note-line {
+  margin: 10px 0 26px;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 数据很少时的解释条：与其让人对着一屏 0 猜，不如直说 */
+.stats-hint {
+  margin: -14px 0 26px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+/* ---------- 分区 ---------- */
+
+.stats-section {
+  margin-bottom: 28px;
+}
+
+.stats-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  span {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+}
+
+.stats-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+.stats-empty-inline {
+  margin: 0;
+  padding: 20px 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.stats-error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+/* ---------- 空库 ---------- */
+
+.stats-blank {
+  padding: 48px 32px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+
+  p {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: var(--ink);
+  }
+}
+
+.stats-blank-hint {
+  max-width: 520px;
+  margin: 0 auto !important;
+  font-size: 12px !important;
+  line-height: 1.8;
+  color: var(--ink-3) !important;
+}
+
+/* ---------- 热力图 ---------- */
+
+.stats-hm-months {
+  position: relative;
+  height: 15px;
+  margin-bottom: 5px;
+
+  span {
+    position: absolute;
+    top: 0;
+    font-size: 10px;
+    color: var(--ink-3);
+    transform: translateX(-1px);
+    white-space: nowrap;
+  }
+}
+
+.stats-hm-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  height: 118px;
+}
+
+.stats-hm-cell {
+  border-radius: 2px;
+  background: var(--surface-2);
+  transition: outline-color 0.12s ease;
+
+  &[data-level='1'] {
+    background: var(--accent);
+    opacity: 0.2;
+  }
+
+  &[data-level='2'] {
+    background: var(--accent);
+    opacity: 0.38;
+  }
+
+  &[data-level='3'] {
+    background: var(--accent);
+    opacity: 0.62;
+  }
+
+  &[data-level='4'] {
+    background: var(--accent);
+    opacity: 1;
+  }
+
+  &:not(.is-future):hover {
+    outline: 1px solid var(--ink-2);
+    outline-offset: 1px;
+  }
+
+  &.is-future {
+    background: transparent;
+  }
+}
+
+.stats-hm-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 7px;
+  font-size: 10px;
+  color: var(--ink-3);
+
+  i {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--surface-2);
+
+    &[data-level='1'] {
+      background: var(--accent);
+      opacity: 0.2;
+    }
+
+    &[data-level='2'] {
+      background: var(--accent);
+      opacity: 0.38;
+    }
+
+    &[data-level='3'] {
+      background: var(--accent);
+      opacity: 0.62;
+    }
+
+    &[data-level='4'] {
+      background: var(--accent);
+      opacity: 1;
+    }
+  }
+
+  span:first-child {
+    margin-right: 3px;
+  }
+
+  span:last-child {
+    margin-left: 3px;
+  }
+}
+
+/* ---------- 柱状趋势 ---------- */
+
+.stats-trend-plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 152px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--line);
+}
+
+.stats-trend-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+
+  &:hover .stats-trend-bar {
+    background: var(--accent-strong);
+  }
+}
+
+.stats-trend-bar {
+  width: 100%;
+  max-width: 56px;
+  margin: 0 auto;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  transition: background 0.12s ease;
+}
+
+.stats-trend-axis {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+
+  span {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 10px;
+    color: var(--ink-3);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+}
+
+.stats-figure-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 星期分布 ---------- */
+
+.stats-weekday {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 132px;
+  padding-top: 6px;
+}
+
+.stats-weekday-col {
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+
+  &:hover .stats-weekday-bar {
+    background: var(--accent-strong);
+  }
+}
+
+.stats-weekday-bar {
+  width: 100%;
+  max-width: 40px;
+  min-height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  transition: background 0.12s ease;
+
+  &.is-zero {
+    min-height: 0;
+    background: transparent;
+  }
+}
+
+.stats-weekday-label {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* ---------- 占比条 ---------- */
+
+.stats-buckets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.stats-bucket {
+  display: grid;
+  grid-template-columns: 78px 1fr 104px;
+  align-items: center;
+  gap: 10px;
+}
+
+.stats-bucket-name {
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-bucket-track {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stats-bucket-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.stats-bucket-value {
+  font-size: 11px;
+  color: var(--ink-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  em {
+    font-style: normal;
+    color: var(--ink-3);
+    margin-left: 6px;
+  }
+}
+
+/* ---------- 书榜 ---------- */
+
+.stats-books {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stats-book {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px 38px 1fr 118px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, border-color 0.12s ease;
+
+  &:hover {
+    background: var(--surface);
+    border-color: var(--line);
+  }
+}
+
+.stats-book-rank {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stats-book-cover {
+  width: 38px;
+  height: 50px;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  i {
+    font-style: normal;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.stats-book-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.stats-book-title {
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-book-author {
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-book-progress {
+  display: block;
+  height: 3px;
+  max-width: 220px;
+  margin-top: 2px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+
+  i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+}
+
+.stats-book-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+
+  b {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  em {
+    font-style: normal;
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+}

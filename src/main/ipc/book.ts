@@ -2,8 +2,10 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as repo from '../db/repo.book'
+import * as batchRepo from '../db/repo.batch'
 import * as tagRepo from '../db/repo.tag'
 import { requireEbookFile } from '../ebookFile'
+import type { BatchAction } from '../../shared/types'
 
 /** 绑定电子书时可选的扩展名：比扫描支持的范围宽，绑来只为「能打开」 */
 const BIND_EXTENSIONS = ['pdf', 'epub', 'mobi', 'azw3', 'azw', 'txt', 'chm', 'djvu', 'fb2', 'cbz', 'cbr']
@@ -13,8 +15,11 @@ export function registerBookHandlers(): void {
   ipcMain.handle('book:get', (_e, id: number) => repo.getOne(id))
   ipcMain.handle('book:create', (_e, input: Parameters<typeof repo.create>[0]) => repo.create(input))
   ipcMain.handle('book:update', (_e, input: Parameters<typeof repo.update>[0]) => repo.update(input))
+  ipcMain.handle('book:rate', (_e, id: number, rating: number) => repo.setRating(id, rating))
   ipcMain.handle('book:softDelete', (_e, id: number) => repo.softDelete(id))
   ipcMain.handle('book:setTags', (_e, id: number, names: string[]) => tagRepo.setBookTags(id, names))
+  /** 书架多选后一次性处理：改状态 / 加标签 / 摘标签 / 改分类 / 移入回收站 */
+  ipcMain.handle('book:batch', (_e, ids: number[], action: BatchAction) => batchRepo.runBatch(ids, action))
 
   /** 用系统默认程序打开这本书的电子书文件 */
   ipcMain.handle('book:openEbook', async (_e, id: number) => {

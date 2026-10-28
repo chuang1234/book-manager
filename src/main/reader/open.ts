@@ -6,24 +6,27 @@ import { getDb } from '../db'
 import * as readerRepo from '../db/repo.reader'
 import { inspectPdf } from './pdf'
 import { inspectEpub, readEpubSection } from './epub'
+import { inspectMobi, readMobiSection } from './mobi'
 import type { Book, EbookFormat, EpubSectionContent, ReaderBook } from '../../shared/types'
 
 /**
  * 打开一本书进阅读器。
  *
- * 三种形态共用同一个外壳与同一条进度链路：
+ * 四种形态共用同一个外壳与同一条进度链路：
  * - TXT：主进程解码成全文，渲染层虚拟滚动（字符偏移即定位）
  * - PDF：主进程只取页数与大纲，原始字节交给渲染层按页渲染（页号即定位）
- * - EPUB：主进程取小节规模与目录，正文按节现取现解压（小节 + 节内比例即定位）
- * MOBI 不在其列：正文是 PalmDOC / HUFF-CDIC 压缩，没有现成依赖时自己解压不值当。
+ * - EPUB / MOBI / AZW3：主进程取小节规模与目录，正文按节现取（小节 + 节内比例即定位）。
+ *   MOBI 自己解 PalmDOC 与 HUFF/CDIC，AZW3 走 KF8 的 FDST 分段（flow 0 正文 + 外挂 CSS）。
  */
 
 /** TXT 上限：整本纯文本一次性过 IPC 并参与索引，再大就会明显卡顿 */
-const MAX_TXT_BYTES = 15 * 1024 * 1024
+export const MAX_TXT_BYTES = 15 * 1024 * 1024
 /** PDF 上限：原始字节要经 IPC 完整交给渲染层，再大的扫描件会明显吃内存 */
-const MAX_PDF_BYTES = 512 * 1024 * 1024
-/** EPUB 上限：正文按节取，整本书不常驻内存，但解压依然要读整包 */
-const MAX_EPUB_BYTES = 256 * 1024 * 1024
+export const MAX_PDF_BYTES = 512 * 1024 * 1024
+/** EPUB / MOBI 上限：正文按节取，整本书不常驻内存，但解压依然要读整包 */
+export const MAX_EPUB_BYTES = 256 * 1024 * 1024
+/** MOBI / AZW3 上限：跟 EPUB 同一个量级，解压后全文会整份进内存 */
+export const MAX_MOBI_BYTES = 256 * 1024 * 1024
 
 function findBook(bookId: number): Book {
   const found = getDb().prepare('SELECT * FROM book WHERE id = ? AND is_deleted = 0').get(bookId) as
@@ -137,15 +140,46 @@ async function openEpub(bookId: number, filePath: string): Promise<ReaderBook> {
 }
 
 /**
- * 取 EPUB 某一节正文。
- * 每次重新解析 OPF：文件不大（几 KB）而这样没有跨调用的状态要维护，
- * 用户在外部把书替换了也不会读到旧缓存。
+ * 打开 MOBI / AZW3。
+ * 每次重新解析：文件不大，省掉跨调用状态，用户在外部替换文件也不会读到旧缓存。
  */
+async function openMobi(bookId: number, filePath: string, format: EbookFormat): Promise<ReaderBook> {
+  const stat = fs.statSync(filePath)
+  if (stat.size > MAX_MOBI_BYTES) {
+    throw new Error(`文件有 ${mib(stat.size)}，超过应用内阅读的 256 MB 上限`)
+  }
+  let inspected: ReturnType<typeof inspectMobi>
+  try {
+    inspected = inspectMobi(filePath)
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e)
+    // HUFF/CDIC、PalmDB 那几条提示是写给用户看的，原样透出
+    if (/HUFF|PalmDB|MOBI/.test(raw)) throw new Error(raw)
+    throw new Error('这个 MOBI 打不开（文件可能已损坏，或者是加密的）')
+  }
+
+  readerRepo.ensureEstimatedPages(bookId, inspected.counts.weights.reduce((a, b) => a + b, 0) || inspected.counts.total * 1200)
+  readerRepo.markReading(bookId)
+
+  return {
+    book: findBook(bookId),
+    format,
+    text: '',
+    bytes: stat.size,
+    chapters: inspected.chapters,
+    // 分节模型与 EPUB 一致：渲染层按「第几节 + 节内比例」算进度
+    epubSections: inspected.counts,
+    position: readerRepo.getPosition(bookId),
+  }
+}
+
 export async function readSection(bookId: number, index: number): Promise<EpubSectionContent> {
   const found = findBook(bookId)
   const filePath = requireEbookFile(found)
-  if (fileExt(filePath) !== 'epub') {
-    throw new Error('这本书不是 EPUB，取不到分节正文')
+  const ext = fileExt(filePath)
+  if (ext === 'mobi' || ext === 'azw3') return readMobiSection(filePath, index)
+  if (ext !== 'epub') {
+    throw new Error('这本书不是 EPUB / MOBI，取不到分节正文')
   }
   return readEpubSection(filePath, index)
 }
@@ -157,12 +191,11 @@ export async function openForReading(bookId: number): Promise<ReaderBook> {
 
   if (!canReadInline(filePath)) {
     const ext = format ? format.toUpperCase() : ''
-    throw new Error(
-      `应用内阅读支持 TXT / PDF / EPUB，${ext || '该格式'} 请点「打开电子书」用系统程序打开`,
-    )
+    throw new Error(`应用内阅读暂不支持 ${ext || '该格式'}，请点「打开电子书」用系统程序打开`)
   }
 
   if (format === 'pdf') return openPdf(bookId, filePath)
   if (format === 'epub') return openEpub(bookId, filePath)
+  if (format === 'mobi' || format === 'azw3') return openMobi(bookId, filePath, format)
   return openTxt(bookId, filePath)
 }

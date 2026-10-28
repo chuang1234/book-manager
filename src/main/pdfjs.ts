@@ -19,8 +19,15 @@ export interface PdfImageLike {
   data: Uint8Array
 }
 
+export interface PdfTextItemLike {
+  str?: string
+  hasEOL?: boolean
+}
+
 export interface PdfPageLike {
   getOperatorList(): Promise<{ fnArray: number[]; argsArray: unknown[][] }>
+  /** 取页面文字（文内搜索用）；扫描件（纯图片）会回空数组 */
+  getTextContent(): Promise<{ items: PdfTextItemLike[] }>
   objs: {
     get(name: string, cb?: (data: PdfImageLike | null) => void): unknown
   }
