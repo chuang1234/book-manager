@@ -243,6 +243,20 @@ export interface BookApi {
     /** 选外部 .db 恢复（成功后应用会重启，返回后基本不会有后续逻辑） */
     restore(): Promise<boolean>
     deleteBackup(file: string): Promise<void>
+    /**
+     * 当场备一份并另存到用户选的位置（网盘同步目录 / U 盘）。
+     * 本机 10 份备份都在同一块硬盘上，硬盘挂了等于没有；用户取消返回 null。
+     */
+    exportBackup(): Promise<BackupFile | null>
+  }
+  /**
+   * 诊断：把渲染层的意外错误写进主进程日志，以及打开日志目录。
+   * 界面上能点到的入口只有「数据与备份」里的「打开日志目录」。
+   */
+  diagnostics: {
+    reportError(title: string, detail: string): Promise<void>
+    /** 在文件管理器里打开日志目录；返回是否成功 */
+    openLogs(): Promise<boolean>
   }
   theme: {
     /**

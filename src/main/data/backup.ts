@@ -130,8 +130,35 @@ export async function pickAndRestore(win: BrowserWindow | null): Promise<boolean
   return true
 }
 
-/** 删除某份备份（只允许删备份目录里的） */
-export function deleteBackup(file: string): void {
+/**
+ * 当场备一份，再另存到用户选的位置（网盘同步目录 / U 盘 / 移动硬盘）。
+ *
+ * 本机那 10 份备份全在同一块盘上——盘挂了等于零份。这个入口补的就是「异地」。
+ * 为什么要现备一份而不是拷最新的那份：用户点这个按钮想看的是「现在」的数据，
+ * 昨天那份未必有今天写的笔记。
+ */
+export async function exportBackupTo(win: BrowserWindow | null): Promise<BackupFile | null> {
+  const fresh = backupNow()
+  let defaultPath = fresh.name
+  try {
+    defaultPath = path.join(app.getPath('documents'), fresh.name)
+  } catch {
+    /* 没有「文档」目录就退回只要文件名，让系统自己定起点 */
+  }
+  const options = {
+    title: '另存一份备份',
+    defaultPath,
+    filters: [{ name: '书架数据库', extensions: ['db'] }],
+  }
+  const picked = win
+    ? await dialog.showSaveDialog(win, options)
+    : await dialog.showSaveDialog(options)
+  if (picked.canceled || !picked.filePath) return null
+  fs.copyFileSync(fresh.path, picked.filePath)
+  return describe(picked.filePath)
+}
+
+/** 删除某份备份（只允许删备份目录里的） */export function deleteBackup(file: string): void {
   const dir = path.resolve(backupsRoot())
   const abs = path.resolve(file)
   if (!abs.startsWith(dir)) throw new Error('只能删除备份目录里的文件')

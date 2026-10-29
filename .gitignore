@@ -4,3 +4,9 @@ dist/
 *.tsbuildinfo
 .vite/
 .DS_Store
+
+# verify-*.js 每次跑测试都会在项目根重新生成这些截图（约 8MB / 60 张），
+# 属于运行产物，不进仓库。只想留证据时手动拷到别处。
+shot-*.png
+card-out-*.png
+pack-shot*.png

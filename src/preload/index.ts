@@ -142,6 +142,12 @@ const api: BookApi = {
     backups: () => ipcRenderer.invoke('data:backups'),
     restore: () => ipcRenderer.invoke('data:restore'),
     deleteBackup: (file) => ipcRenderer.invoke('data:deleteBackup', file),
+    exportBackup: () => ipcRenderer.invoke('data:exportBackup'),
+  },
+  diagnostics: {
+    // 渲染层的全局错误往主进程日志里塞一条；返回 void，界面不关心结果
+    reportError: (title, detail) => ipcRenderer.invoke('diagnostics:reportError', title, detail),
+    openLogs: () => ipcRenderer.invoke('diagnostics:openLogs'),
   },
   theme: {
     // sendSync 只用于这一处开机读取：换取「首帧就是对的颜色」

@@ -13,6 +13,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc -b",
+    "test": "node scripts/run-all.js",
+    "test:list": "node scripts/run-all.js --list",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f -o better-sqlite3",
     "dist": "npm run rebuild && electron-vite build && electron-builder --win",

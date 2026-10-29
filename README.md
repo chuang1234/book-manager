@@ -110,7 +110,8 @@ book-manager/
 ├── resources/                   # 应用图标：icon.svg / icon.png / icon-256.png / icon.ico
 ├── public/favicon.svg           # 页面图标（构建时拷进 out/renderer）
 ├── scripts/
-│   ├── smoke-db.ts              # 冒烟测试（726 项断言）
+│   ├── smoke-db.ts              # 冒烟测试（745 项断言）
+│   ├── run-all.js               # npm run test 的入口：逐套跑、汇总、自己找 NODE_PATH
 │   ├── make-icon.js             # 从 SVG 导出全套图标（playwright + 系统 Edge）
 │   ├── make-epub-fixture.js     # 造一本 12 节的测试 EPUB（verify-epub 不必再要真书）
 │   ├── epub-api.ts              # 把主进程的 EPUB 解包/搜索实现打成浏览器可直接用的包
@@ -125,6 +126,7 @@ book-manager/
 │   ├── verify-batch.js          # 书架批量操作：选择模式 / 连选 / 五种动作 / 深色（同上）
 │   ├── verify-card.js           # 摘录卡片：入口 / 画布像素 / 档位 / 保存复制 IPC（同上）
 │   ├── verify-detail.js         # 详情页宽屏三栏：右栏出现 / 页内跳转 / 同类书 / 窄屏退回两栏（同上）
+│   ├── verify-resilience.js     # 事故兜底：渲染崩溃出卡片不出白屏 / 重试真能恢复 / 换页自动清 / 异地备份入口（同上）
 │   └── electron-stub.js         # 冒烟测试用的 electron 桩
 └── src/
     ├── shared/                  # 主进程/渲染进程共享：类型与 IPC 契约
@@ -137,19 +139,21 @@ book-manager/
     │   ├── stats.ts             # 统计口径的纯逻辑：区间起止、按日/月补空、连续天数、热力图分档
     │   └── card.ts              # 摘录卡片版式：断行（测量函数注入）/ 高度自适应 / 配色 / 文件名
     ├── main/                    # 主进程
-    │   ├── index.ts             # 窗口 + cover:// 协议注册 + 生命周期
+    │   ├── index.ts             # 窗口 + cover:// 协议注册 + 生命周期 + 渲染进程崩溃自动恢复
+    │   ├── crash.ts             # 兜底：未捕获异常写日志 + 弹框；日志按天滚动，只留 14 份
     │   ├── storage.ts           # userData 下 covers/ attachments 目录与文件工具
     │   ├── seed.ts              # 预置分类/标签落库（幂等）+ 空库首次启动自动装
     │   ├── scan/                # 电子书扫描：formats / txt / epub / mobi / pdf / png / scanDir / watch
     │   ├── reader/              # 应用内阅读：open（txt/pdf/分节三分支）/ pdf / epub（小节与目录内联）/ mobi（PalmDOC+HUFF/CDIC+KF8）/ search（五格式取文）/ readerExit（关窗确认文案）
     │   ├── import/              # 批量导入：csv / xlsx / fieldMap / importer
     │   ├── db/                  # schema.ts（DDL）/ index.ts（连接 + 迁移）/ repo.*.ts（数据访问，含 repo.batch.ts 多选批处理）
-    │   └── ipc/                 # category / book / trash / stats / cover / tag / seed / attachment / scan / import / note / copy / list / reading / bookmark / annotation / reader / data / theme / card
+    │   └── ipc/                 # category / book / trash / stats / cover / tag / seed / attachment / scan / import / note / copy / list / reading / bookmark / annotation / reader / data / theme / card / diagnostics
     ├── preload/index.ts         # contextBridge 暴露 window.api
     └── renderer/
-        ├── App.tsx              # 视图路由 + 全局状态
+        ├── App.tsx              # 视图路由 + 全局状态（每个页面套一道 ErrorBoundary）
         ├── theme.ts             # 首帧同步取主题 + 落到 <html data-theme>
-        ├── api/ utils/ components/   # components 含 TagInput / CoverCard / BookTable / CategoryTree / Toast / ConfirmDialog
+        ├── crash.ts             # 全局错误上报：window.onerror / unhandledrejection → 主进程日志
+        ├── api/ utils/ components/   # components 含 TagInput / CoverCard / BookTable / CategoryTree / Toast / ConfirmDialog / ErrorBoundary
         └── pages/               # Layout / Home / Shelf / Stats / BookDetail（含 QuoteCardModal / paintCard）/ BookForm / Trash / BookLists / CategoryModal / Reader（含 SearchPanel / AnnoPanel / AnnoPopover）
 ```
 
@@ -170,25 +174,34 @@ book-manager/
 
 ```bash
 npm run typecheck   # tsc -b 全量类型检查
-npm run smoke       # 726 项断言（纯 Node，electron 走 alias 桩）
 npm run build       # 三目标构建
+npm run test        # 一把梭：14 套 / 1273 项，约 4 分钟
 ```
 
-渲染层实测（先 `npm run build`，需要本机 Edge）：
+`npm run test` 自己找 playwright-core 的 `NODE_PATH`、先检查 `out/renderer` 在不在，逐套打一行结果，最后一张总表；任一套挂掉就以非 0 退出。想只跑几套：
+
+```bash
+npm run test -- --list     # 列出所有套件
+npm run test txt theme     # 名字模糊匹配
+npm run test smoke         # 只跑冒烟：不需要构建产物，也不需要浏览器
+```
+
+单套跑（调试某一项时更快，输出也更完整）：
 
 ```bash
 export NODE_PATH=~/.workbuddy/binaries/node/workspace/node_modules
-node scripts/verify-txt.js        # 92 项
-node scripts/verify-epub.js       # 69 项
-node scripts/verify-presets.js    # 39 项
-node scripts/verify-shelf-view.js # 15 项
+node scripts/verify-txt.js          # 97 项
+node scripts/verify-epub.js         # 69 项（READER_FORMAT=mobi 时同一套断言验 MOBI/AZW3，也是 69 项）
+node scripts/verify-presets.js      # 39 项
+node scripts/verify-shelf-view.js   # 15 项
 node scripts/verify-lists-rating.js # 29 项（加入书单 + 星级评分 + 创建行按钮不换行）
-node scripts/verify-data.js        # 18 项（数据页：导出 / 备份 / 恢复 / 删除）
-node scripts/verify-theme.js       # 43 项（主题三档 + 跟随系统 + 逐页深色白块扫描 + 卡片三档 + 阅读器背景跟随）
-node scripts/verify-stats.js       # 32 项（统计页：范围切换 / 图表形状 / 深色白块 / 空库与数据极少的引导）
-node scripts/verify-batch.js       # 45 项（书架批量操作：选择模式 / 连选 / 五种动作 / 深色）
-node scripts/verify-card.js        # 28 项（摘录卡片：两个入口 / 画布真的画了东西 / 档位先缩字号保比例 / 保存复制走 IPC）
-node scripts/verify-detail.js      # 23 项（详情页宽屏三栏：右栏出现与居中 / 页内跳转与高亮 / 同类书 / 窄屏退回 / 深色不露白）
+node scripts/verify-data.js         # 18 项（数据页：导出 / 备份 / 恢复 / 删除）
+node scripts/verify-theme.js        # 43 项（主题三档 + 跟随系统 + 逐页深色白块扫描 + 卡片三档 + 阅读器背景跟随）
+node scripts/verify-stats.js        # 32 项（统计页：范围切换 / 图表形状 / 深色白块 / 空库与数据极少的引导）
+node scripts/verify-batch.js        # 45 项（书架批量操作：选择模式 / 连选 / 五种动作 / 深色）
+node scripts/verify-card.js         # 28 项（摘录卡片：两个入口 / 画布真的画了东西 / 档位先缩字号保比例 / 保存复制走 IPC）
+node scripts/verify-detail.js       # 23 项（详情页宽屏三栏：右栏出现与居中 / 页内跳转与高亮 / 同类书 / 窄屏退回 / 深色不露白）
+node scripts/verify-resilience.js   # 21 项（渲染崩溃出卡片不出白屏 / 重试真能恢复 / 换页自动清 / 异地备份与日志入口）
 ```
 
 ## P1 第一轮已实现（封面 / 标签 / 附件）
@@ -617,6 +630,40 @@ EPUB 又是第三条路径，但依然共用同一个外壳与同一条进度链
 - 渲染层 `verify-card.js` **28 项**：两个入口都在、**canvas 上真的画了东西**（逐像素采样算「有墨点」的比例，防的是一张空白底也能通过尺寸断言）、切方图后**仍是 1080×1080**（缩字号撑住比例，缩完还画满了字）且侧栏报了具体百分比、竖版两条提示都消失、墨黑切换是**像素真的变了**（不是只改按钮高亮）、保存/复制拿到的是 PNG dataURL 与合规文件名、`Esc` 关闭、深色界面无白块、卡片底色跟着界面走。方图的导出件另存 `card-out-square.png`，缩完字号到底还能不能看是眼睛的事。
 - `verify-txt.js` 新增 5 项书签备注：Enter 保存后就地显示、落库、`Esc` 只取消编辑不关抽屉、取消后回到原备注
 
+## 事故兜底（错误边界 / 崩溃日志 / 异地备份）
+
+功能做到一定程度后，真正稀缺的不是新功能，是「出事时别把用户吓到」。这一轮补的就是这个。
+
+**页面级 ErrorBoundary（`components/ErrorBoundary.tsx`）**
+
+React 里任何一处渲染抛错，默认行为是整棵树卸载——用户看到一片白。这个项目真实踩过一次：测试桩把副本状态写成 `'in'`，`STATUS_META[c.status].cls` 抛错，整个详情页白屏，控制台只有一行 `reading 'cls'`。
+
+- 每个页面套一道，**阅读器单独一套**并多给一个「返回书架」（全屏页崩了得能退出去，否则卡死在里面）。
+- 文案第一句就说「你的图书、笔记和划线都在数据库里，没有受影响」——数据都在 SQLite 里，界面崩了跟数据无关，但用户分不清，第一反应永远是「书没了」。
+- 原始报错直接印在卡片上，堆栈折叠在「技术细节」里，不用开 f12 就能抄给人。
+- `resetKey` = 页面 + 书 id + `dataVersion`：换页、换书、数据刷新都会自动清掉错误态，不会「点回书架还是那张卡」。
+- 错误同时通过 IPC 报给主进程写日志（`reportError`），事后不用只靠截图。
+
+**全局错误上报（`renderer/crash.ts`）**
+
+`componentDidCatch` 抓不到事件处理器和 Promise 里的错误，那两个口子单独监听 `window.onerror` / `unhandledrejection` 报到主进程。约束是「上报本身绝不能再抛」+ 同一条错误最多报 5 次（某个动画帧里报错能把日志刷成几百 MB）。
+
+**主进程兜底（`main/crash.ts`）**
+
+- `uncaughtException`：写日志 + 弹框（**异步的 `showMessageBox`**，不是 `showErrorBox`）。踩过一次：同步版会把主进程整条事件循环卡在对话框上，实测直接挡掉了后面一条错误的日志。
+- 十秒内同一个错误超过 **20 次**才退出（此时是死循环，继续跑可能写坏库）；第 1 次弹框，第 2–20 次只记日志，不弹窗风暴。
+- `unhandledRejection` 只记日志不弹框——多数时候只是某个请求失败了，弹了也说不清是哪件事。
+- 日志 `userData/logs/error-YYYY-MM-DD.log`，按天分文件、只留 14 份、单文件超 2MB 只记摘要。堆栈首行原本会和 message 重复，已在写盘前切掉（冒烟钉住了「消息只写一遍」）。
+- **渲染进程整个挂掉**（`render-process-gone`，多半是大 PDF / 超大 EPUB 撑爆内存）：自动重载一次并说明原因；连崩 4 次就不再自动救，提示重开。
+
+**异地备份（`data:exportBackup`）**
+
+本机那 10 份备份全在同一块硬盘上——盘挂了等于零。数据页加了「另存到别处…」：当场 `VACUUM INTO` 一份最新快照，再让用户挑落点（网盘同步目录 / U 盘 / 移动硬盘）。为什么现备一份而不是拷最新的那份：用户点这个按钮想看的是「现在」的数据，昨天那份未必有今天写的笔记。
+
+**一键验收（`scripts/run-all.js`）**
+
+13 套 hand-run 脚本原先要记 13 条命令，等于「要靠意志力才会跑」。现在 `npm run test` 一把梭，自己找 `NODE_PATH`、先查构建产物在不在、逐套打结果、最后一张总表。
+
 ## P3 路线（剩余未实现）
 
 - **P3**：离线规则助手（自然语言检索、分类推荐、数据清洗、口语化统计）
@@ -651,3 +698,7 @@ EPUB 又是第三条路径，但依然共用同一个外壳与同一条进度链
 - **虚拟滚动的位置精度依赖估算**：没读过的区域用「字号 × 版心宽」估行数，中文正文误差通常 < 1 行；拖动滚动条首次跳到远处可能有 1~5% 的落点偏差，滚一屏后修正。段落高度无法预知是流式排版的天生限制，PDF / EPUB 有固定页或 CFI 就不受影响
 - 包体：入口 chunk ~822KB（React 19 全量），PDF 相关三个 chunk（pdfjs 820KB / worker 1.09MB / cmaps 1.57MB）按需加载。桌面本地应用可接受
 - 「未分类」没有独立侧栏入口，从「全部图书」进入
+- **ErrorBoundary 只接得住「渲染期」的错误**：事件处理器、`setTimeout`、Promise 里抛的异常 React 看不见，那些由 `crash.ts` 的全局监听记日志，界面上不会给任何提示（那些地方本来就没有「这一块坏了」的边界）。真出事时去「数据与备份 →打开日志目录」看。
+- **主进程兜底不重启**：`uncaughtException` 之后进程状态可能已经不一致（比如某个事务没走完），这里选「记录 + 提示 + 继续跑」而不是退出——个人工具里保住窗口比干净退出重要。同一个错误 10 秒内超过 20 次才强制退出，那时才认定是死循环。
+- **日志只记错误文本，不整段存正文**：堆栈和消息里可能出现书名与文件路径，但不会把笔记内容抄进去；需要排查时直接发出整个 `error-*.log`。
+- **异地备份是手动的一次动作**：不会自动往网盘写（那要用户先给出目录授权），每次点「另存到别处」才拷一份。真要靠它救命，得自己养成隔段时间点一次的习惯。

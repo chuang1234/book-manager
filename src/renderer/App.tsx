@@ -11,6 +11,7 @@ import BookLists from './pages/BookLists/BookLists'
 import CategoryModal from './pages/CategoryModal/CategoryModal'
 import Reader from './pages/Reader/Reader'
 import { ConfirmProvider, useConfirm } from './components/ConfirmDialog'
+import ErrorBoundary from './components/ErrorBoundary'
 import { ToastProvider, useToast } from './components/Toast'
 import { api, errorText } from './api'
 import { readInitialTheme, rememberTheme } from './theme'
@@ -36,6 +37,23 @@ export type View =
  * 这是「这台机器上我愿意怎么看」，不是书目数据，所以不进数据库。
  */
 const SHELF_VIEW_KEY = 'shelf.view'
+
+/**
+ * 页面身份。变了就说明用户去了别处，ErrorBoundary 该把上一页的崩溃状态清掉——
+ * 否则详情页白屏之后点侧栏，回来的还是那张错误卡片。
+ */
+function viewKey(v: View): string {
+  switch (v.name) {
+    case 'shelf':
+      return `shelf:${v.categoryId ?? 'all'}:${v.status}:${v.tagId ?? 'none'}`
+    case 'detail':
+      return `detail:${v.bookId}`
+    case 'reader':
+      return `reader:${v.bookId}`
+    default:
+      return v.name
+  }
+}
 
 function loadShelfView(): ShelfView {
   try {
@@ -228,13 +246,21 @@ function AppInner() {
 
   if (view.name === 'reader') {
     return (
-      <Reader
-        bookId={view.bookId}
-        uiTheme={theme.resolved}
-        initialAnnoId={view.annoId}
-        onChanged={bump}
-        onClose={() => setView(view.from)}
-      />
+      // 阅读器不套 Layout，崩了就是个全屏白窗，必须留一条退出来的路
+      <ErrorBoundary
+        resetKey={`reader:${view.bookId}`}
+        scope="reader"
+        onEscape={() => setView(view.from)}
+        escapeText="返回书架"
+      >
+        <Reader
+          bookId={view.bookId}
+          uiTheme={theme.resolved}
+          initialAnnoId={view.annoId}
+          onChanged={bump}
+          onClose={() => setView(view.from)}
+        />
+      </ErrorBoundary>
     )
   }
 
@@ -253,7 +279,10 @@ function AppInner() {
         onManageCategories={() => setCategoryOpen(true)}
         onChanged={bump}
       >
-        {renderView()}
+        {/* 一页一道闸：某个区块炸了只损失这一页，侧栏和顶栏还在，用户能走开 */}
+        <ErrorBoundary resetKey={`${viewKey(view)}:${dataVersion}`} scope={view.name}>
+          {renderView()}
+        </ErrorBoundary>
       </Layout>
 
       {formOpen && (

@@ -25,7 +25,9 @@ import { registerSeedHandlers } from './ipc/seed'
 import { registerDataHandlers } from './ipc/data'
 import { registerThemeHandlers, themeBackground } from './ipc/theme'
 import { registerCardHandlers } from './ipc/card'
+import { registerDiagnosticsHandlers } from './ipc/diagnostics'
 import { autoBackupOncePerDay } from './data/backup'
+import { installCrashGuards, logError } from './crash'
 import { ensurePresets } from './seed'
 import { buildExitPrompt, isBackChoice } from './readerExit'
 import { coversRoot } from './storage'
@@ -38,6 +40,13 @@ import { coversRoot } from './storage'
  * 名字只影响显示（窗口标题、快捷方式另有配置），数据目录必须保持稳定。
  */
 app.setName('book-manager')
+
+/**
+ * 兜底要在所有初始化之前装好——下面这些 registerXxx、开库、建窗口，
+ * 任何一步抛出来都会让窗口根本不出现，用户只看到「点了没反应」。
+ * 日志目录跟着 userData 走，所以必须排在 setName 之后。
+ */
+installCrashGuards()
 
 /**
  * 用户已经确认过「就是要退出程序」。置位后所有关闭拦截一律放行，
@@ -93,6 +102,44 @@ function createWindow(): void {
   } else {
     win.loadFile(join(app.getAppPath(), 'out/renderer/index.html'))
   }
+
+  /**
+   * 渲染进程整个挂掉：窗口会变成一片白，用户以为程序死了。
+   * 常见诱因就是内存——几百 MB 的扫描版 PDF、或者超大 EPUB 的图片全内联。
+   * 自动重载一次通常能救回来；连着崩就不救了，提示重开，免得陷入死循环。
+   */
+  let rendererCrashed = 0
+  win.webContents.on('render-process-gone', (_e, details) => {
+    if (details.reason === 'clean-exit') return
+    const file = logError(
+      'renderer/gone',
+      new Error(`渲染进程退出：${details.reason}`),
+      `exitCode=${details.exitCode}`,
+    )
+    rendererCrashed += 1
+    if (rendererCrashed > 3) {
+      void dialog.showMessageBox({
+        type: 'error',
+        title: '界面反复崩溃',
+        message: '已自动恢复 3 次仍不稳定，建议关掉重开。',
+        detail: `日志：${file}`,
+        buttons: ['知道了'],
+        noLink: true,
+      })
+      return
+    }
+    void dialog.showMessageBox({
+      type: 'error',
+      title: '界面意外退出',
+      message: '界面意外退出，已自动恢复。',
+      detail: `多半是打开的文件太大（扫描版 PDF / 超大 EPUB 最吃内存）。你的数据没有受影响。\n\n日志：${file}`,
+      buttons: ['知道了'],
+      noLink: true,
+    })
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.webContents.reload()
+    }, 500)
+  })
 
   // 关窗时若还在读书，先确认一次；选「返回书架」就只退出阅读器，程序留着
   win.on('close', (e) => {
@@ -170,6 +217,8 @@ app.whenReady().then(() => {
   registerReaderHandlers()
   registerSeedHandlers()
   registerDataHandlers()
+  // 渲染层报错与「打开日志目录」：错误日志统一落在 userData/logs
+  registerDiagnosticsHandlers()
   // 摘录卡片：渲染层画好 PNG，主进程只管落盘与剪贴板
   registerCardHandlers()
   // 必须在 createWindow 之前：窗口底色要按主题取，渲染层首帧还会同步问一次当前模式

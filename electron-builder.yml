@@ -19,6 +19,21 @@ files:
 # 真正的原生模块只有 better-sqlite3，由 `npm run dist` 里的 electron-rebuild -w 单独处理。
 npmRebuild: false
 
+# ── 别再从 GitHub 拉 electron ────────────────────────────────────────────
+# electron-builder 和 npm 用的是两个互不认账的下载缓存：
+#   npm install electron → %LOCALAPPDATA%\electron\Cache\<hash>\electron-v44.7.0-win32-x64.zip
+#   electron-builder      → %LOCALAPPDATA%\electron-builder\Cache\electron\electron-v44.7.0-*.zip
+# 后者默认是空的，于是每次打包都要重下 158MB（国内能慢到几小时，ETA 显示四位数）。
+# 而 npm 装完早就把整份发行版解压在 node_modules/electron/dist 了，直接拿来用，
+# 下载这一步整个消失。注意：这里不做版本校验，dist 的 version 必须与
+# devDependencies 里的 electron 一致（换版本后重新 npm install 即可）。
+electronDist: node_modules/electron/dist
+
+# 兜底：万一 node_modules/electron/dist 不在（重装依赖还没跑 postinstall），
+# 走国内镜像而不是 GitHub。有 electronDist 时这段不生效。
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
 # better-sqlite3 是原生模块：.node 二进制在 asar 里没法 dlopen，必须解到
 # app.asar.unpacked 下。漏了这条的表现是启动即报 "Cannot open ... better_sqlite3.node"。
 asarUnpack:

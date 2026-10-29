@@ -64,6 +64,38 @@ export default function Data() {
     }
   }
 
+  /** 另存一份到用户挑的位置：网盘目录 / U 盘。本机那 10 份同盘，等于没有异地 */
+  const doExportBackup = async () => {
+    // preload 没重启时新接口还不在，宁可说一句人话也别甩一个 TypeError
+    if (typeof api.data?.exportBackup !== 'function') {
+      toast('当前版本还没有这个功能，重启一下应用', 'error')
+      return
+    }
+    setBusy('exportBackup')
+    try {
+      const b = await api.data.exportBackup()
+      // 取消时返回 null，不算错也不用提示
+      if (b) toast(`已另存到 ${b.path}`)
+    } catch (e) {
+      toast(errorText(e))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const openLogs = async () => {
+    if (typeof api.diagnostics?.openLogs !== 'function') {
+      toast('当前版本还没有这个功能，重启一下应用', 'error')
+      return
+    }
+    try {
+      const ok = await api.diagnostics.openLogs()
+      if (!ok) toast('打不开日志目录，可能在 %APPDATA%\\book-manager\\logs', 'error')
+    } catch (e) {
+      toast(errorText(e))
+    }
+  }
+
   const doRestore = async (file?: BackupFile) => {
     const ok = await confirm({
       title: file ? '恢复这份备份？' : '从文件恢复？',
@@ -134,10 +166,18 @@ export default function Data() {
           <button className="btn btn-primary btn-small" disabled={busy !== ''} onClick={() => void doBackup()}>
             {busy === 'backup' ? '备份中…' : '立即备份'}
           </button>
+          <button className="btn btn-small" disabled={busy !== ''} onClick={() => void doExportBackup()}>
+            {busy === 'exportBackup' ? '另存中…' : '另存到别处…'}
+          </button>
           <button className="btn btn-small" disabled={busy !== ''} onClick={() => void doRestore()}>
             从文件恢复…
           </button>
         </div>
+
+        <p className="data-tip">
+          「另存到别处」会当场把当前数据新备一份，让你挑个位置存——网盘同步目录、U 盘、移动硬盘都行。
+          上面这些备份全在同一块硬盘上，硬盘坏了就一起没了，异地那份才是真保险。
+        </p>
 
         {backups.length === 0 ? (
           <div className="data-empty">还没有备份。点「立即备份」会生成第一份。</div>
@@ -162,6 +202,14 @@ export default function Data() {
           </ul>
         )}
       </section>
+
+      <p className="data-diag">
+        界面出过问题、或者想看看后台报了什么错，可以
+        <button className="link-btn" onClick={() => void openLogs()}>
+          打开日志目录
+        </button>
+        。里面按天存放，只保留最近两周。
+      </p>
     </div>
   )
 }

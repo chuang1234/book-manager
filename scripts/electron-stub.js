@@ -32,4 +32,9 @@ module.exports = {
   BrowserWindow: {
     getAllWindows: () => [],
   },
+  // 崩溃兜底会弹框；冒烟里只验「日志写了没」，不真弹
+  dialog: {
+    showErrorBox: () => {},
+    showMessageBoxSync: () => 0,
+  },
 }

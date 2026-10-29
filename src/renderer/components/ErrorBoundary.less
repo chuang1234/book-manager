@@ -1,0 +1,98 @@
+/* 页面级崩溃占位：不吓人、但说清楚三件事——出错了 / 数据没事 / 怎么办。
+   尺寸跟着内容区走：Layout 里是内容区，阅读器里是整窗，两边都不用特判。 */
+.err-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 70vh;
+  padding: 32px 24px;
+}
+
+.err-box {
+  width: 100%;
+  max-width: 520px;
+  padding: 26px 26px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+/* 用叹号圆圈而不是警告三角：这是「坏了」不是「危险操作」 */
+.err-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 14px;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: 50%;
+}
+
+.err-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.err-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+
+  strong {
+    font-weight: 500;
+    color: var(--ink);
+  }
+}
+
+/* 原始报错：等宽但压小，读一眼就够，不要抢主文案 */
+.err-msg {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-radius: 7px;
+  word-break: break-word;
+}
+
+.err-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.err-stack {
+  max-height: 220px;
+  margin: 14px 0 0;
+  padding: 10px;
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: 7px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.err-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-3);
+}

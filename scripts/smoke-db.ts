@@ -18,6 +18,7 @@ import * as settingsRepo from '../src/main/db/repo.settings'
 import * as noteRepo from '../src/main/db/repo.note'
 import * as copyRepo from '../src/main/db/repo.copy'
 import * as listRepo from '../src/main/db/repo.booklist'
+import { logError, logsRoot, pruneLogs } from '../src/main/crash'
 import * as readingRepo from '../src/main/db/repo.reading'
 import * as readerRepo from '../src/main/db/repo.reader'
 import * as bookmarkRepo from '../src/main/db/repo.bookmark'
@@ -2367,6 +2368,65 @@ async function main(): Promise<void> {
   check('没书名就用「未命名」', cardFileName('', new Date(2026, 9, 28)) === '未命名-摘录-20261028.png')
   check('卡片上的日期用本地日期（禁 toISOString）', todayCardStamp(new Date(2026, 9, 28)) === '2026.10.28', todayCardStamp(new Date(2026, 9, 28)))
   check('三档都有中文标签', Object.keys(CARD_FORMAT_LABEL).length === 3)
+
+  console.log('\n[43] 崩溃日志（主进程兜底）')
+  {
+    const dir = logsRoot()
+    check('日志目录落在 userData/logs 下', dir.endsWith(`${path.sep}logs`), dir)
+
+    const file = logError('smoke/uncaughtException', new Error('boom-测试'), 'extra=1')
+    check('logError 返回真实落盘的路径', fs.existsSync(file), file)
+    const body = fs.readFileSync(file, 'utf8')
+    check(
+      '日志里有作用域、消息与堆栈',
+      body.includes('smoke/uncaughtException') && body.includes('boom-测试') && body.includes('at '),
+    )
+    check('附加现场（exitCode 之类）也写进去了', body.includes('extra=1'))
+    check(
+      '消息只写一遍（堆栈首行本来就和 message 重复）',
+      body.split('boom-测试').length - 1 === 1,
+      `${body.split('boom-测试').length - 1} 次`,
+    )
+
+    logError('smoke/second', new Error('第二次'))
+    const body2 = fs.readFileSync(file, 'utf8')
+    check(
+      '同一天追加到同一个文件，不覆盖前一条',
+      body2.length > body.length && body2.includes('第二次') && body2.includes('boom-测试'),
+    )
+
+    // 渲染层报上来的是拼好的字符串，不是 Error 对象——这条路径绝不能抛
+    let threw = false
+    try {
+      logError('renderer/window.onerror', '纯文本错误\n\n    at whatever')
+    } catch {
+      threw = true
+    }
+    check('传字符串不炸（渲染层就是这么报的）', !threw)
+    check('字符串内容也落进了日志', fs.readFileSync(file, 'utf8').includes('纯文本错误'))
+
+    // 一个空作用域 / undefined 也不能把日志写崩
+    let threw2 = false
+    try {
+      logError('smoke/undefined', undefined)
+    } catch {
+      threw2 = true
+    }
+    check('undefined 也接得住', !threw2)
+
+    // 清理：把目录清空再造 16 个，验证只留 14 个
+    for (const n of fs.readdirSync(dir)) {
+      if (n.startsWith('error-')) fs.unlinkSync(path.join(dir, n))
+    }
+    for (let i = 1; i <= 16; i++) {
+      fs.writeFileSync(path.join(dir, `error-2020-01-${String(i).padStart(2, '0')}.log`), 'x')
+    }
+    pruneLogs()
+    const left = fs.readdirSync(dir).filter((n) => n.startsWith('error-')).length
+    check('只保留最近 14 个日志文件（不然日志能撑爆磁盘）', left === 14, `${left}`)
+    const names = fs.readdirSync(dir).filter((n) => n.startsWith('error-')).sort()
+    check('留下的是最新的那批', !names.includes('error-2020-01-01.log'), names[0])
+  }
 
   if (failures > 0) {
     console.error(`\n冒烟测试失败：${failures} 项`)
